@@ -1,0 +1,28 @@
+---
+title: Why Markdoc
+author: Alice
+---
+
+# {% $frontmatter.title %}
+
+Written by {% $frontmatter.author %}.
+
+{% aside type="tip" title="Astro component" %}
+This tag is rendered by `src/components/Aside.astro`.
+{% /aside %}
+
+> A blockquote rendered by `src/components/Quote.astro`.
+
+{% image src="/logo.png" alt="Logo" width=100 height=100 caption="A caption" /%}
+
+{% if equals($abTestGroup, "image-optimization-lover") %}
+Shown to the image-optimization-lover group.
+{% /if %}
+
+Function: {% shout("hello") %}
+
+```js
+console.log("highlighted by shiki");
+```
+
+{% partial file="./_footer.mdoc" /%}

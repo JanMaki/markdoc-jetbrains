@@ -130,6 +130,7 @@ language-server/
   src/                               同梱サーバーのエントリーポイントと差し替え
   build.mjs                          esbuild で 1 ファイルにまとめる
 samples/basic/                       動作確認用の Markdoc プロジェクト
+samples/astro/                       Astro（@astrojs/markdoc）での動作確認用のプロジェクト
 ```
 
 ## 開発
@@ -139,6 +140,7 @@ samples/basic/                       動作確認用の Markdoc プロジェク�
 ./gradlew verifyPlugin     # Plugin Verifier で対応 IDE の 2026.1.4 との互換性を検査する
 ./gradlew runIde           # samples/basic を開いたサンドボックスの WebStorm を起動する
 ./gradlew runIde -PlspTrace  # LSP のメッセージを log_runIde/language-services/ に記録する
+./gradlew runIde -Psample=astro  # samples/astro を開く（先に samples/astro で npm install しておく）
 ```
 
 言語サーバーは `prepareSandbox` の前に `language-server/` で `npm ci` と esbuild が走り、配布ディレクトリの `server/`

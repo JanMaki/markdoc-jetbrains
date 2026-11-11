@@ -1,0 +1,16 @@
+---
+import {getCollection} from "astro:content";
+
+const posts = await getCollection("blog");
+---
+<html lang="ja">
+<head>
+    <meta charset="utf-8"/>
+    <title>Markdoc Astro sample</title>
+</head>
+<body>
+<ul>
+    {posts.map((post) => <li><a href={`/blog/${post.id}/`}>{post.data.title}</a></li>)}
+</ul>
+</body>
+</html>
