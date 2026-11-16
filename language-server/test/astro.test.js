@@ -88,6 +88,32 @@ test("スキーマのファイルで variables の後のキーを探す", () => 
     assert.strictEqual(findKeyPath("export default {}", ["a"]), -1);
 });
 
+test("スキーマのキーは親のオブジェクトの直下のプロパティから選ぶ", () => {
+    const source = "export default {\n  variables: {\n    a: {b: 1, /* b: */ c: \"b:\"},\n    // b: 0\n    b: {a: 1, c: {d: 1}, d: 2},\n  },\n};\n";
+    const direct = source.indexOf("b: {a");
+    assert.strictEqual(findKeyPath(source, ["b"]), direct);
+    assert.strictEqual(findKeyPath(source, ["b", "d"]), source.indexOf("d: 2"));
+    assert.strictEqual(findKeyPath(source, ["a", "c"]), source.indexOf("c: \""));
+    assert.strictEqual(findKeyPath(source, ["a", "d"]), -1);
+});
+
+test("定義ジャンプはスキーマの変数の直下のプロパティへ移動する", () => {
+    const {MarkdocDefinitionProvider} = require("../src/definition");
+    const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "markdoc-definition-")));
+    const source = "export default {\n  variables: {\n    site: {theme: {name: 1}},\n    name: 2,\n  },\n};\n";
+    fs.writeFileSync(path.join(root, "markdoc.config.mjs"), source);
+    const line = "{% $name %}\n";
+    const provider = Object.create(MarkdocDefinitionProvider.prototype);
+    provider.config = {root, schema: {path: "markdoc.config.mjs"}};
+    provider.services = {
+        Documents: {get: () => ({getText: () => line})},
+        Schema: {get: () => ({tags: {}, variables: {site: {theme: {name: 1}}, name: 2}})},
+    };
+    const result = provider.onDefinition({textDocument: {uri: "file:///doc.mdoc"}, position: {line: 0, character: 5}});
+    assert.strictEqual(result.uri, path.join(root, "markdoc.config.mjs"));
+    assert.deepStrictEqual(result.range.start, {line: 3, character: 4});
+});
+
 const {MarkdocCompletionProvider, VARIABLE_PATTERN} = require("../src/completion");
 
 /** [line] の末尾で変数の補完を求めたときの候補。 */
