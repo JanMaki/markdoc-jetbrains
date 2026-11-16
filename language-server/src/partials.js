@@ -104,7 +104,7 @@ function mtimeOf(file) {
  * [mtimes] に、読んだファイルと読む前の更新時刻を加える。
  */
 function readAliases(file, mtimes) {
-    const {paths, pathsDir, baseUrl} = readOptions(file, mtimes, new Set());
+    const {paths, pathsDir, baseUrl} = readOptions(file, mtimes, new Set(), new Map());
     if (!paths) return [];
     const base = baseUrl ?? pathsDir;
     return Object.entries(paths)
@@ -125,17 +125,16 @@ function readAliases(file, mtimes) {
 /**
  * [file] の実際の `paths`（と書いた tsconfig のディレクトリ）と `baseUrl`（書いた tsconfig から解決した絶対パス）。
  * 後の `extends` ほど、子ほど優先する。[active] は読んでいる途中のファイル（循環の検出）。
+ * [parsed] は読んだファイルの解析結果（読めなければ `null`）。
  */
-function readOptions(file, mtimes, active) {
+function readOptions(file, mtimes, active, parsed) {
     let options = {paths: null, pathsDir: null, baseUrl: null};
     if (active.has(file) || active.size > 10) return options;
-    if (!mtimes.has(file)) mtimes.set(file, mtimeOf(file));
-    let json;
-    try {
-        json = parseJsonc(fs.readFileSync(file, "utf8"));
-    } catch {
-        return options;
+    if (!parsed.has(file)) {
+        mtimes.set(file, mtimeOf(file));
+        parsed.set(file, readJsonc(file));
     }
+    const json = parsed.get(file);
     if (!json || typeof json !== "object") return options;
     const dir = path.dirname(file);
 
@@ -143,7 +142,7 @@ function readOptions(file, mtimes, active) {
     for (const parent of [json.extends].flat()) {
         if (typeof parent !== "string" || !/^\.\.?[\\/]/.test(parent)) continue;
         const target = path.resolve(dir, parent.endsWith(".json") ? parent : `${parent}.json`);
-        const inherited = readOptions(target, mtimes, active);
+        const inherited = readOptions(target, mtimes, active, parsed);
         if (inherited.paths) options = {...options, paths: inherited.paths, pathsDir: inherited.pathsDir};
         if (inherited.baseUrl) options = {...options, baseUrl: inherited.baseUrl};
     }
@@ -153,6 +152,15 @@ function readOptions(file, mtimes, active) {
     if (paths && typeof paths === "object") options = {...options, paths, pathsDir: dir};
     if (typeof baseUrl === "string") options = {...options, baseUrl: path.resolve(dir, baseUrl)};
     return options;
+}
+
+/** [file] を JSONC として読む。読めなければ `null`。 */
+function readJsonc(file) {
+    try {
+        return parseJsonc(fs.readFileSync(file, "utf8"));
+    } catch {
+        return null;
+    }
 }
 
 /** コメントと末尾のカンマを許す JSON（tsconfig.json）を読む。 */

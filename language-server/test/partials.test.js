@@ -116,6 +116,22 @@ test("relative：複数の extends から読む同じ tsconfig は、後の exte
     assert.strictEqual(r.resolve("@p/shared.mdoc", from), path.join(root, "src/a/shared.mdoc"));
 });
 
+test("relative：複数の経路から extends する tsconfig は 1 回だけ読む", (t) => {
+    const root = project({
+        "src/content/post.mdoc": "",
+        "src/a/shared.mdoc": "",
+        "tsconfig.json": `{"extends": ["./first.json", "./second.json"]}`,
+        "first.json": `{"extends": "./shared.json"}`,
+        "second.json": `{"extends": "./shared.json"}`,
+        "shared.json": `{"compilerOptions": {"paths": {"@p/*": ["src/a/*"]}}}`,
+    });
+    const r = resolver(root, "src/content", {partialPaths: "relative"});
+    const read = t.mock.method(fs, "readFileSync");
+    assert.strictEqual(r.resolve("@p/shared.mdoc", uri(root, "src/content/post.mdoc")), path.join(root, "src/a/shared.mdoc"));
+    const shared = read.mock.calls.filter(({arguments: [file]}) => file === path.join(root, "shared.json"));
+    assert.strictEqual(shared.length, 1);
+});
+
 test("relative：extends が循環していても読める", () => {
     const root = project({
         "src/content/post.mdoc": "",
