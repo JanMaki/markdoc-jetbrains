@@ -15,9 +15,15 @@ import net.plalis.markdoc.MarkdocConfigReader
 object MarkdocPathResolver {
     /**
      * パスの基準。[prefixLength] はパスの先頭のうち基準を選ぶのに使った部分（別名 `@partials/`）の長さで、
-     * 残りが [directory] からの相対パス。`*` のない別名では [directory] がファイルで、[prefixLength] がパス全体の長さ。
+     * 残りが [directories] のどれかからの相対パス。`*` の別名で行き先が複数あれば、[directories] は書いた順に並ぶ。
+     * `*` のない別名では [directory] がファイルで、[prefixLength] がパス全体の長さ。
      */
-    data class Base(val directory: VirtualFile, val prefixLength: Int = 0)
+    data class Base(val directories: List<VirtualFile>, val prefixLength: Int = 0) {
+        constructor(directory: VirtualFile, prefixLength: Int = 0) : this(listOf(directory), prefixLength)
+
+        /** 最初の基準。 */
+        val directory: VirtualFile get() = directories.first()
+    }
 
     /** [file] に書かれた [value] の基準。 */
     fun base(project: Project, file: VirtualFile, value: MarkdocPathValue): Base? {
@@ -48,7 +54,11 @@ object MarkdocPathResolver {
         val segmentEnd = text.indexOf('/', local).takeIf { it >= 0 } ?: text.length
         val path = text.substring(0, segmentEnd).trim('/')
         if (path.isEmpty()) return null
-        return base.directory.findFileByRelativePath(path)
+        // 行き先が複数あれば、パス全体があるものを選ぶ（なければ区切りまでのパスがある最初のもの）
+        val full = text.trim('/')
+        val directory = base.directories.firstOrNull { it.findFileByRelativePath(full) != null }
+        return directory?.findFileByRelativePath(path)
+            ?: base.directories.firstNotNullOfOrNull { it.findFileByRelativePath(path) }
     }
 
     /** 設定の `path` のディレクトリ。なければプロジェクトルート。 */
@@ -57,17 +67,22 @@ object MarkdocPathResolver {
         return relative.takeIf { it.isNotEmpty() }?.let(root::findFileByRelativePath) ?: root
     }
 
-    /** [text] に一致する tsconfig の別名の行き先（`*` 付きならディレクトリ、`*` なしならファイル）。 */
+    /**
+     * [text] に一致する tsconfig の別名の行き先。`*` 付きなら存在するすべての行き先のディレクトリ（ファイルは
+     * [resolveAt] と補完がそれぞれの行き先で探す）、`*` なしなら存在する最初の行き先のファイル。
+     */
     private fun aliasBase(root: VirtualFile, text: String): Base? {
         for (alias in MarkdocTsconfigAliases.read(root)) {
-            for (target in alias.targets) {
-                if (alias.wildcard && text.startsWith(alias.prefix) && target.endsWith("/*")) {
-                    val directory = alias.base.findFileByRelativePath(target.removeSuffix("/*"))
-                    if (directory?.isDirectory == true) return Base(directory, alias.prefix.length)
-                } else if (!alias.wildcard && text == alias.prefix) {
-                    val file = alias.base.findFileByRelativePath(target)
-                    if (file != null && !file.isDirectory) return Base(file, text.length)
+            if (alias.wildcard && text.startsWith(alias.prefix)) {
+                val directories = alias.targets.filter { it.endsWith("/*") }.mapNotNull { target ->
+                    alias.base.findFileByRelativePath(target.removeSuffix("/*"))?.takeIf { it.isDirectory }
                 }
+                if (directories.isNotEmpty()) return Base(directories, alias.prefix.length)
+            } else if (!alias.wildcard && text == alias.prefix) {
+                val file = alias.targets.firstNotNullOfOrNull { target ->
+                    alias.base.findFileByRelativePath(target)?.takeIf { !it.isDirectory }
+                }
+                if (file != null) return Base(file, text.length)
             }
         }
         return null

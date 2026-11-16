@@ -37,16 +37,19 @@ class MarkdocPathCompletionContributor : CompletionContributor() {
         val prefix = typed.substring(slash + 1)
 
         val directoryPath = typed.substring(0, slash + 1).trim('/')
-        val directory =
-            if (directoryPath.isEmpty()) base.directory else base.directory.findFileByRelativePath(directoryPath)
-                ?: return
-        if (!directory.isDirectory) return
+        // 別名の行き先が複数あれば、すべての行き先の中身を出す（同じ名前は先の行き先のもの）
+        val directories = base.directories.mapNotNull {
+            if (directoryPath.isEmpty()) it else it.findFileByRelativePath(directoryPath)
+        }.filter { it.isDirectory }
+        if (directories.isEmpty()) return
 
         val paths = result.withPrefixMatcher(prefix)
-        for (child in directory.children) {
+        val names = HashSet<String>()
+        for (child in directories.flatMap { it.children.asList() }) {
             if (child.name.startsWith(".")) continue
             if (child == file) continue
             if (value.isPartial && !child.isDirectory && !MarkdocFiles.isMarkdoc(child)) continue
+            if (!names.add(child.name)) continue
             paths.addElement(lookupElement(child))
         }
         // パスの中では、言語サーバーなどほかの補完の候補は役に立たない
