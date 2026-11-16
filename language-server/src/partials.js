@@ -104,7 +104,7 @@ function mtimeOf(file) {
  * [mtimes] に、読んだファイルと読む前の更新時刻を加える。
  */
 function readAliases(file, mtimes) {
-    const {paths, pathsDir, baseUrl} = readOptions(file, mtimes);
+    const {paths, pathsDir, baseUrl} = readOptions(file, mtimes, new Set());
     if (!paths) return [];
     const base = baseUrl ?? pathsDir;
     return Object.entries(paths)
@@ -124,12 +124,12 @@ function readAliases(file, mtimes) {
 
 /**
  * [file] の実際の `paths`（と書いた tsconfig のディレクトリ）と `baseUrl`（書いた tsconfig から解決した絶対パス）。
- * 後の `extends` ほど、子ほど優先する。
+ * 後の `extends` ほど、子ほど優先する。[active] は読んでいる途中のファイル（循環の検出）。
  */
-function readOptions(file, mtimes) {
+function readOptions(file, mtimes, active) {
     let options = {paths: null, pathsDir: null, baseUrl: null};
-    if (mtimes.has(file) || mtimes.size > 10) return options;
-    mtimes.set(file, mtimeOf(file));
+    if (active.has(file) || active.size > 10) return options;
+    if (!mtimes.has(file)) mtimes.set(file, mtimeOf(file));
     let json;
     try {
         json = parseJsonc(fs.readFileSync(file, "utf8"));
@@ -139,12 +139,15 @@ function readOptions(file, mtimes) {
     if (!json || typeof json !== "object") return options;
     const dir = path.dirname(file);
 
+    active.add(file);
     for (const parent of [json.extends].flat()) {
         if (typeof parent !== "string" || !/^\.\.?[\\/]/.test(parent)) continue;
-        const inherited = readOptions(path.resolve(dir, parent.endsWith(".json") ? parent : `${parent}.json`), mtimes);
+        const target = path.resolve(dir, parent.endsWith(".json") ? parent : `${parent}.json`);
+        const inherited = readOptions(target, mtimes, active);
         if (inherited.paths) options = {...options, paths: inherited.paths, pathsDir: inherited.pathsDir};
         if (inherited.baseUrl) options = {...options, baseUrl: inherited.baseUrl};
     }
+    active.delete(file);
 
     const {paths, baseUrl} = json.compilerOptions ?? {};
     if (paths && typeof paths === "object") options = {...options, paths, pathsDir: dir};

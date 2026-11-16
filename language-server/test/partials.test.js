@@ -100,6 +100,33 @@ test("relative：extends した tsconfig を編集すると別名を読み直す
     assert.strictEqual(r.resolve("@p/shared.mdoc", from), path.join(root, "src/b/shared.mdoc"));
 });
 
+test("relative：複数の extends から読む同じ tsconfig は、後の extends でも読み直して優先する", () => {
+    const root = project({
+        "src/content/post.mdoc": "",
+        "src/a/shared.mdoc": "",
+        "src/b/shared.mdoc": "",
+        "tsconfig.json": `{"extends": ["./first.json", "./second.json"]}`,
+        "first.json": `{"extends": "./shared.json"}`,
+        "second.json": `{"extends": ["./other.json", "./shared.json"]}`,
+        "other.json": `{"compilerOptions": {"paths": {"@p/*": ["src/b/*"]}}}`,
+        "shared.json": `{"compilerOptions": {"paths": {"@p/*": ["src/a/*"]}}}`,
+    });
+    const r = resolver(root, "src/content", {partialPaths: "relative"});
+    const from = uri(root, "src/content/post.mdoc");
+    assert.strictEqual(r.resolve("@p/shared.mdoc", from), path.join(root, "src/a/shared.mdoc"));
+});
+
+test("relative：extends が循環していても読める", () => {
+    const root = project({
+        "src/content/post.mdoc": "",
+        "src/a/shared.mdoc": "",
+        "tsconfig.json": `{"extends": "./a.json", "compilerOptions": {"paths": {"@p/*": ["src/a/*"]}}}`,
+        "a.json": `{"extends": "./tsconfig.json"}`,
+    });
+    const r = resolver(root, "src/content", {partialPaths: "relative"});
+    assert.strictEqual(r.resolve("@p/shared.mdoc", uri(root, "src/content/post.mdoc")), path.join(root, "src/a/shared.mdoc"));
+});
+
 test("relative：extends した tsconfig の baseUrl から子の別名を解決する", () => {
     const root = project({
         "src/content/post.mdoc": "",
