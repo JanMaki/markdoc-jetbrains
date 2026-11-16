@@ -1,16 +1,16 @@
 package net.plalis.markdoc.config
 
-import net.plalis.markdoc.MarkdocConfigFile
-import net.plalis.markdoc.MarkdocConfigReader
 import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.project.DumbAwareAction
+import net.plalis.markdoc.MarkdocConfigFile
+import net.plalis.markdoc.MarkdocConfigReader
 
 /**
  * New メニュー（プロジェクトビューの右クリック → New など）の「Markdoc Config File」。
  *
  * サーバーは設定のパス（既定はプロジェクトルートの `markdoc.config.json`）しか読まないので、選んでいるディレクトリに
- * かかわらず、設定のパスに雛形（[MarkdocConfigFile.TEMPLATE_TEXT]）の中身で作る。設定ファイルがすでにあれば項目を出さない。
+ * かかわらず、設定のパスに雛形（[MarkdocConfigFile.templateText]）の中身で作る。設定ファイルがすでにあれば項目を出さない。
  */
 class NewMarkdocConfigAction : DumbAwareAction() {
     /** [update] はファイルの有無を見るだけなので、EDT を止めないようバックグラウンドで行う。 */

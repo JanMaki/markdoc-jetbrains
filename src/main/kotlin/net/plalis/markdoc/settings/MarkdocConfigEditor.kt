@@ -1,7 +1,5 @@
 package net.plalis.markdoc.settings
 
-import net.plalis.markdoc.MarkdocConfigFile
-import net.plalis.markdoc.MarkdocConfigReader
 import com.google.gson.JsonParseException
 import com.google.gson.JsonParser
 import com.intellij.openapi.editor.EditorFactory
@@ -18,13 +16,15 @@ import com.intellij.openapi.vfs.VfsUtilCore
 import com.intellij.ui.ColorUtil
 import com.intellij.ui.EditorTextField
 import com.intellij.util.ui.UIUtil
+import net.plalis.markdoc.MarkdocConfigFile
+import net.plalis.markdoc.MarkdocConfigReader
 import java.awt.Font
 import java.io.IOException
 
 /**
  * `markdoc.config.json` の中身を編集する JSON エディタ。
  *
- * ファイルの内容をそのまま表示し、[save] で書き戻す。ファイルがなければ作成時の雛形（[MarkdocConfigFile.TEMPLATE_TEXT]）を
+ * ファイルの内容をそのまま表示し、[save] で書き戻す。ファイルがなければ作成時の雛形（[MarkdocConfigFile.templateText]）を
  * 読み取り専用で表示する。編集できないとわかるよう、色分けを外した薄い文字、パネルの背景色、無効な枠にする。
  * [create] で雛形の中身のファイルを作ると、通常の表示に戻って編集できるようになる。
  *
@@ -197,7 +197,7 @@ class MarkdocConfigEditor(
         val raw = MarkdocConfigReader.findConfigFile(project)?.let { VfsUtilCore.loadText(it) }
         exists = raw != null
         crlf = raw?.contains("\r\n") == true
-        return if (raw == null) MarkdocConfigFile.TEMPLATE_TEXT else StringUtil.convertLineSeparators(raw)
+        return if (raw == null) MarkdocConfigFile.templateText(project) else StringUtil.convertLineSeparators(raw)
     }
 
     private companion object {

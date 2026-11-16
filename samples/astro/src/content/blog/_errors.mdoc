@@ -1,0 +1,13 @@
+---
+title: Intentional errors
+---
+
+`_` で始まるのでコレクションには入らない（Astro のビルドの対象外）。言語サーバーの検証の確認用に、意図的なエラーを入れてある。
+
+{% partial file="./_missing.mdoc" /%}
+
+{% aside type="danger" %}
+Invalid type value.
+{% /aside %}
+
+{% image src="/logo.png" /%}

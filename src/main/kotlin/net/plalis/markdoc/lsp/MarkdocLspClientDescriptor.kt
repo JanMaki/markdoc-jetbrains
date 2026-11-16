@@ -1,19 +1,22 @@
 package net.plalis.markdoc.lsp
 
-import net.plalis.markdoc.MarkdocConfigReader
-import net.plalis.markdoc.MarkdocFiles
 import com.google.gson.JsonObject
 import com.intellij.execution.process.BaseProcessHandler
 import com.intellij.javascript.nodejs.execution.NodeTargetRun
 import com.intellij.javascript.nodejs.execution.NodeTargetRunOptions
 import com.intellij.javascript.nodejs.interpreter.local.NodeJsLocalInterpreter
+import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.io.FileUtil
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.platform.lsp.api.ProjectWideLspClientDescriptor
 import com.intellij.platform.lsp.api.customization.LspCompletionCustomizer
 import com.intellij.platform.lsp.api.customization.LspCustomization
+import com.intellij.util.text.SemVer
+import net.plalis.markdoc.MarkdocConfigReader
+import net.plalis.markdoc.MarkdocFiles
 import java.nio.file.Path
+import java.util.concurrent.TimeUnit
 
 /**
  * プロジェクトに 1 つ起動する Markdoc 言語サーバーの記述子。
@@ -44,12 +47,36 @@ class MarkdocLspClientDescriptor(
             config.get("root")?.asString?.takeIf { it.isNotEmpty() }?.let {
                 setWorkingDirectory(targetRun.path(it))
             }
+            if (needsStripTypesFlag()) addParameter(STRIP_TYPES_FLAG)
             addParameter(targetRun.path(serverPath))
             addParameter("--stdio")
             charset = Charsets.UTF_8
         }
         return targetRun.startProcessEx().processHandler
     }
+
+    /**
+     * TypeScript のスキーマを読むのに [STRIP_TYPES_FLAG] が要るか。型の除去は Node.js 22.18・23.6 以降は既定で有効で、
+     * 22.6 より前はこのオプションを知らない（付けると起動できない）ので、22.6〜22.17 と 23.0〜23.5 だけ付ける。
+     */
+    private fun needsStripTypesFlag(): Boolean {
+        val schema = (config.get("schema") as? JsonObject)?.get("path")?.takeIf { it.isJsonPrimitive }?.asString
+        if (schema == null || TYPESCRIPT_EXTENSIONS.none { schema.endsWith(it, ignoreCase = true) }) return false
+        val version = nodeVersion() ?: return false
+        return when (version.major) {
+            22 -> version.minor in 6..17
+            23 -> version.minor < 6
+            else -> false
+        }
+    }
+
+    private fun nodeVersion(): SemVer? =
+        interpreter.cachedVersion?.get() ?: try {
+            interpreter.provideCachedVersionOrFetch().blockingGet(VERSION_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+        } catch (e: Exception) {
+            thisLogger().info("Cannot get the Node.js version", e)
+            null
+        }
 
     /**
      * サーバーが返した URI に対応するファイルを探す。
@@ -72,5 +99,11 @@ class MarkdocLspClientDescriptor(
     /** 補完候補の変換だけを差し替え、ほかの LSP 機能は IDE 標準の動作を使う。 */
     override val lspCustomization: LspCustomization = object : LspCustomization() {
         override val completionCustomizer: LspCompletionCustomizer = MarkdocCompletionSupport()
+    }
+
+    private companion object {
+        const val STRIP_TYPES_FLAG = "--experimental-strip-types"
+        val TYPESCRIPT_EXTENSIONS = listOf(".ts", ".mts", ".cts")
+        const val VERSION_TIMEOUT_MS = 5000
     }
 }

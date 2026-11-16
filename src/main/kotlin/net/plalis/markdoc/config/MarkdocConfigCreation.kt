@@ -1,14 +1,14 @@
 package net.plalis.markdoc.config
 
-import net.plalis.markdoc.MarkdocConfigFile
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.options.ConfigurationException
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.vfs.VirtualFile
+import net.plalis.markdoc.MarkdocConfigFile
 
 /**
- * 設定のパスに雛形（[MarkdocConfigFile.TEMPLATE_TEXT]）の中身で設定ファイルを作り、エディタで開く。
+ * 設定のパスに雛形（[MarkdocConfigFile.templateText]）の中身で設定ファイルを作り、エディタで開く。
  * 作れなければ（すでにある、ルートの外を指すなど）エラーのダイアログを出す。
  *
  * New メニュー（[NewMarkdocConfigAction]）と通知（[MarkdocConfigNotifier]）の作成ボタンから、EDT で呼ぶ。

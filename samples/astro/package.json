@@ -1,0 +1,14 @@
+{
+  "name": "markdoc-astro-sample",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview"
+  },
+  "dependencies": {
+    "@astrojs/markdoc": "2.1.4",
+    "astro": "7.4.10"
+  }
+}

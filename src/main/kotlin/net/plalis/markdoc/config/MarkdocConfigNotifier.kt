@@ -1,9 +1,5 @@
 package net.plalis.markdoc.config
 
-import net.plalis.markdoc.MarkdocConfigReader
-import net.plalis.markdoc.MarkdocFiles
-import net.plalis.markdoc.settings.MarkdocConfigurable
-import net.plalis.markdoc.settings.MarkdocSettings
 import com.intellij.ide.util.PropertiesComponent
 import com.intellij.notification.NotificationAction
 import com.intellij.notification.NotificationGroupManager
@@ -22,6 +18,10 @@ import com.intellij.openapi.options.ShowSettingsUtil
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.vfs.VirtualFile
+import net.plalis.markdoc.MarkdocConfigReader
+import net.plalis.markdoc.MarkdocFiles
+import net.plalis.markdoc.settings.MarkdocConfigurable
+import net.plalis.markdoc.settings.MarkdocSettings
 
 /**
  * 設定ファイル（`markdoc.config.json`）がないときに、作成を勧める通知を出す。
@@ -108,7 +108,7 @@ class MarkdocConfigNotifier(private val project: Project) : Disposable {
         val path = MarkdocSettings.getInstance(project).configPath
         NotificationGroupManager.getInstance()
             .getNotificationGroup(NOTIFICATION_GROUP)
-            .createNotification("$path not found", message, NotificationType.INFORMATION)
+            .createNotification("$path not found", messageFor(message), NotificationType.INFORMATION)
             // サジェスト型にすると、最初のアクション（作成）がボタンになり、残りはリンクのまま
             .setSuggestionType(true)
             .addAction(NotificationAction.createSimpleExpiring("Create $path") { createConfigFileAndOpen(project) })
@@ -117,6 +117,9 @@ class MarkdocConfigNotifier(private val project: Project) : Disposable {
             })
             .notify(project)
     }
+
+    private fun messageFor(message: String): String =
+        if (MarkdocAstroProject.isAstro(project)) "$message $ASTRO_MESSAGE" else message
 
     /** 監視は [listeners] に登録してあり、このサービスの破棄で一緒に破棄されるので、ここでは何もしない。 */
     override fun dispose() = Unit
@@ -138,6 +141,9 @@ class MarkdocConfigNotifier(private val project: Project) : Disposable {
         /** タグを含む `.md` ファイルのときの本文。`.md` は Markdoc として扱わないので、拡張子のことも伝える。 */
         private const val MARKDOWN_FILE_MESSAGE =
             "This file contains Markdoc tags. Creating a config file and using the .mdoc extension is recommended."
+
+        private const val ASTRO_MESSAGE =
+            "This looks like an Astro project, so the config will be set up for @astrojs/markdoc."
 
         /** [project] の通知を出すサービスを返す。 */
         fun getInstance(project: Project): MarkdocConfigNotifier = project.service()

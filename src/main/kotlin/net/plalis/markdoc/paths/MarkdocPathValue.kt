@@ -30,9 +30,10 @@ data class MarkdocPathValue(
          * [text] の [offset] がファイルパスの属性値の中（両端を含む）にあれば、その値を返す。
          *
          * 書きかけで閉じ引用符がない値も対象にする。URL（`https://…`）、アンカー（`#…`）、`mailto:` は除く。
+         * [allowComments] が真なら、`<!-- … -->` の中のタグは除く。
          */
-        fun at(text: CharSequence, offset: Int): MarkdocPathValue? {
-            val tokens = MarkdocTagScanner.scan(text)
+        fun at(text: CharSequence, offset: Int, allowComments: Boolean): MarkdocPathValue? {
+            val tokens = MarkdocTagScanner.scan(text, allowComments)
             val index = tokens.indexOfFirst { it.kind == Kind.STRING && it.start < offset && offset <= it.end }
             if (index < 1) return null
             val string = tokens[index]

@@ -1,25 +1,15 @@
-const fs = require("node:fs");
-const path = require("node:path");
 const {Plugins} = require("@markdoc/language-server");
+const {partialResolver} = require("./partials");
 const {frontmatterOf, withMarkdocVariables} = require("./variables");
 
 /**
- * partial の存在確認と変数の検証を、編集中の文書に合わせて行う ValidationProvider。
- *
- * 上流は検証に使う `config.partials` を Scanner が持つ「保存済みファイルの partial 一覧」から作る。
- * Scanner は起動時のスキャンとファイル監視（動的登録が必要で、JetBrains では届かない）でしか更新されないため、
- * 起動後に書いた `{% partial %}` は常に「見つからない」と報告される。
- *
- * また上流は、スキーマに `variables` があるとすべての変数参照をそこから探すため、組み込みの
- * `$markdoc.frontmatter.*` まで「Undefined variable」と報告する。
+ * 検証。上流からの変更点：
+ * - partial の有無を、起動時のスキャン結果ではなくディスク上のファイルで判定する（[partialResolver] で解決）。
+ *   JetBrains ではファイル監視が届かず、上流は起動後に書いた partial を「見つからない」と報告する
+ * - `$markdoc.frontmatter` と設定の `frontmatterVariable` を定義済みの変数にする
+ * - 設定の `ignoreUndefinedVariables` が真なら「Undefined variable」を出さない（Astro もビルド時に無視する）
  */
 class MarkdocValidationProvider extends Plugins.ValidationProvider {
-    /**
-     * 上流の検証設定のうち `partials` を、編集中の文書にある `{% partial %}` ごとにディスク上の実ファイルで判定し直す。
-     *
-     * Scanner のキャッシュはファイル削除を検知できないことがあるため、キャッシュにあるかどうかでは判定しない。
-     * また `variables` に、組み込みの `$markdoc.frontmatter` として文書のフロントマターを加える。
-     */
     configuration(uri) {
         const config = super.configuration(uri);
         const {Documents, Scanner} = this.services;
@@ -29,77 +19,26 @@ class MarkdocValidationProvider extends Plugins.ValidationProvider {
         // スキーマに variables がなければ上流は変数を検証しないので、そのままにする
         // （加えると、設定にない変数がすべて未定義と報告されるようになる）
         const variables = config.variables && typeof config.variables === "object"
-            ? withMarkdocVariables(config.variables, frontmatterOf(ast, Scanner))
+            ? withMarkdocVariables(config.variables, frontmatterOf(ast, Scanner), this.config)
             : config.variables;
 
+        const resolver = partialResolver(this.config, this.services);
         const partials = {...config.partials};
         for (const node of ast.walk()) {
             if (node.type !== "tag" || node.tag !== "partial") continue;
             const file = node.attributes?.file;
             if (typeof file !== "string" || !file) continue;
-            const relative = toContentRelative(file);
-            if (relative && isFileInside(Scanner.path, relative)) partials[file] = true;
+            if (resolver.resolve(file, uri)) partials[file] = true;
             else delete partials[file];
         }
         return {...config, partials, variables};
     }
-}
 
-/**
- * `file` をコンテンツルートからの相対パスにする。IDE の補完・ジャンプと同じく先頭の `/` はコンテンツルートを指す。
- * UNC パスやドライブ付きの絶対パスはコンテンツルートの外を指すので `null` を返す。
- */
-function toContentRelative(file) {
-    if (/^[\\/]{2}/.test(file)) return null;
-    const relative = file.replace(/^[\\/]/, "");
-    if (!relative || path.isAbsolute(relative) || path.win32.isAbsolute(relative)) return null;
-    return relative;
-}
-
-/** シンボリックリンクを辿る回数の上限。循環するリンクで止まらなくなるのを防ぐ。 */
-const MAX_LINK_HOPS = 40;
-
-/**
- * `root` 基準の `relative` が、シンボリックリンクを解決した後も `root` の内側にある通常ファイルかどうか。
- *
- * `realpathSync` で一度に解決すると、リンク先が UNC パス（`\\server\share`）でもアクセスしてしまう。
- * そこでパスを 1 要素ずつ辿り、シンボリックリンクやジャンクションはリンク先がコンテンツルートの内側に
- * あることを確かめてから、リンク先と残りの要素を続けて辿る。
- */
-function isFileInside(root, relative) {
-    try {
-        const realRoot = fs.realpathSync(root);
-        const pending = relative.split(/[\\/]+/).filter(Boolean);
-        let current = realRoot;
-        let hops = 0;
-        while (pending.length) {
-            const part = pending.shift();
-            if (part === ".") continue;
-            const next = part === ".." ? path.dirname(current) : path.join(current, part);
-            if (!isInside(realRoot, next)) return false;
-            if (!fs.lstatSync(next).isSymbolicLink()) {
-                current = next;
-                continue;
-            }
-            if (++hops > MAX_LINK_HOPS) return false;
-            const target = fs.readlinkSync(next);
-            if (/^[\\/]{2}/.test(target)) return false;
-            const resolved = path.resolve(current, target);
-            if (!isInside(realRoot, resolved)) return false;
-            // リンク先もリンクを含みうるので、ルートから辿り直す
-            pending.unshift(...path.relative(realRoot, resolved).split(path.sep).filter(Boolean));
-            current = realRoot;
-        }
-        return current !== realRoot && fs.statSync(current).isFile();
-    } catch {
-        return false;
+    validate(uri) {
+        const diagnostics = super.validate(uri);
+        if (!diagnostics || !this.config.ignoreUndefinedVariables) return diagnostics;
+        return diagnostics.filter((diagnostic) => diagnostic.code !== "variable-undefined");
     }
-}
-
-/** `target` が `root` 自身か、その内側を指すかどうか（どちらも絶対パス）。 */
-function isInside(root, target) {
-    const inner = path.relative(root, target);
-    return inner === "" || (inner !== ".." && !inner.startsWith(`..${path.sep}`) && !path.isAbsolute(inner));
 }
 
 module.exports = {MarkdocValidationProvider};

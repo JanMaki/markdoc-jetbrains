@@ -1,5 +1,6 @@
 package net.plalis.markdoc.paths
 
+import net.plalis.markdoc.MarkdocConfigReader
 import net.plalis.markdoc.MarkdocFiles
 import com.intellij.codeInsight.navigation.actions.GotoDeclarationHandler
 import com.intellij.openapi.editor.Editor
@@ -22,7 +23,8 @@ class MarkdocPathGotoDeclarationHandler : GotoDeclarationHandler {
         val file = psiFile.virtualFile ?: return null
         if (!MarkdocFiles.isMarkdoc(file)) return null
 
-        val value = MarkdocPathValue.at(editor.document.charsSequence, offset) ?: return null
+        val allowComments = MarkdocConfigReader.allowComments(psiFile.project)
+        val value = MarkdocPathValue.at(editor.document.charsSequence, offset, allowComments) ?: return null
         val target = MarkdocPathResolver.resolveAt(psiFile.project, file, value, offset) ?: return null
 
         val psiManager = PsiManager.getInstance(psiFile.project)

@@ -94,7 +94,9 @@ tasks.withType<PrepareSandboxTask>().configureEach {
 
 // ---- 開発用のサンドボックス IDE ----
 
-val sampleProjectPath = layout.projectDirectory.dir("samples/basic").asFile.absolutePath
+// -Psample=astro のように、開くサンプル（samples/ の下のディレクトリ名）を選べる。既定は basic
+val sampleName = providers.gradleProperty("sample").getOrElse("basic")
+val sampleProjectPath = layout.projectDirectory.dir("samples/$sampleName").asFile.absolutePath
 val lspTrace = providers.gradleProperty("lspTrace").isPresent
 
 tasks.runIde {

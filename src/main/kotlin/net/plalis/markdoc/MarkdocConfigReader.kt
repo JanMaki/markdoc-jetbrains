@@ -1,11 +1,12 @@
 package net.plalis.markdoc
 
-import net.plalis.markdoc.settings.MarkdocSettings
 import com.google.gson.*
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.project.guessProjectDir
 import com.intellij.openapi.vfs.VfsUtilCore
 import com.intellij.openapi.vfs.VirtualFile
+import net.plalis.markdoc.config.MarkdocAstroProject
+import net.plalis.markdoc.settings.MarkdocSettings
 import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.Path
@@ -94,21 +95,31 @@ object MarkdocConfigReader {
      * サーバーは設定エントリの `markdoc` を Markdoc の `Tokenizer` にそのまま渡すので、`markdoc.allowComments` を見る。
      */
     fun allowComments(project: Project): Boolean {
-        val config = (read(project) as? Result.Found)?.config ?: return false
+        val config = effectiveConfig(project) ?: return false
         val markdoc = config.get("markdoc") as? JsonObject ?: return false
         return isTruthy(markdoc.get("allowComments"))
     }
 
+    /** サーバーに渡すのと同じ設定エントリ（IDE 側の機能もこれを使う）。設定ファイルが読めなければ `null`。 */
+    fun effectiveConfig(project: Project): JsonObject? = when (val result = read(project)) {
+        is Result.Found -> result.config
+        Result.NotFound -> defaultConfig(project)
+        is Result.Invalid -> null
+    }
+
     /**
-     * 設定ファイルがない場合にサーバーへ渡す最小の設定。
+     * 設定ファイルがない場合にサーバーへ渡す設定。
      *
      * サーバーは初期化オプションの `config` がないと起動時に例外で終了するため、
      * スキーマなしでも構文エラーの検出などが動くように `root` と `path` だけを渡す。
      * 作成時の雛形（[MarkdocConfigFile.TEMPLATE_TEXT]）は例のパスを含むので、ここでは使わない。
+     * Astro のプロジェクトなら [MarkdocAstroProject.defaultEntry] を使う。
      */
-    fun defaultConfig(project: Project): JsonObject = JsonObject().apply {
-        addProperty("root", projectRoot(project) ?: "")
-        addProperty("path", "")
+    fun defaultConfig(project: Project): JsonObject {
+        val config = project.guessProjectDir()?.let(MarkdocAstroProject::defaultEntry) ?: JsonObject()
+        config.addProperty("root", projectRoot(project) ?: "")
+        if (!config.has("path")) config.addProperty("path", "")
+        return config
     }
 
     /**
