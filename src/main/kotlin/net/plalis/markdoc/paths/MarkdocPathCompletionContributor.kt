@@ -47,16 +47,19 @@ class MarkdocPathCompletionContributor : CompletionContributor() {
             if (child.name.startsWith(".")) continue
             if (child == file) continue
             if (value.isPartial && !child.isDirectory && !MarkdocFiles.isMarkdoc(child)) continue
-            paths.addElement(lookupElement(child))
+            // ファイル名は、別名の `*` の読み替え（`*.mdoc` の `.mdoc`）を戻した名前で出す
+            val name = if (child.isDirectory) child.name else base.pathName(child.name) ?: continue
+            if (name.isEmpty()) continue
+            paths.addElement(lookupElement(child, name))
         }
         // パスの中では、言語サーバーなどほかの補完の候補は役に立たない
         paths.stopHere()
     }
 
-    /** [child] の補完候補。ディレクトリは末尾に `/` を付ける。 */
-    private fun lookupElement(child: VirtualFile): LookupElementBuilder =
+    /** [child] を [name] として書く補完候補。ディレクトリは末尾に `/` を付ける。 */
+    private fun lookupElement(child: VirtualFile, name: String): LookupElementBuilder =
         if (child.isDirectory) {
-            LookupElementBuilder.create(child, child.name)
+            LookupElementBuilder.create(child, name)
                 .withIcon(PlatformIcons.FOLDER_ICON)
                 .withTailText("/", true)
                 .withInsertHandler { context, _ ->
@@ -69,6 +72,6 @@ class MarkdocPathCompletionContributor : CompletionContributor() {
                     AutoPopupController.getInstance(context.project).scheduleAutoPopup(editor)
                 }
         } else {
-            LookupElementBuilder.create(child, child.name).withIcon(child.fileType.icon)
+            LookupElementBuilder.create(child, name).withIcon(child.fileType.icon)
         }
 }
