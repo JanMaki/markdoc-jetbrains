@@ -97,6 +97,11 @@ test("スキーマのキーは親のオブジェクトの直下のプロパテ�
     assert.strictEqual(findKeyPath(source, ["a", "d"]), -1);
 });
 
+test("コメントと文字列の中の variables は使わない", () => {
+    const source = "// variables: {a: 1}\nconst s = \"variables: {a: 2}\";\nexport default {\n  variables: {a: 3},\n};\n";
+    assert.strictEqual(findKeyPath(source, ["a"]), source.indexOf("a: 3"));
+});
+
 test("引用符付きのキーのエスケープを戻してから比べる", () => {
     const source = "export default {\n  variables: {\n    user: {\"a\\\"b\": 1, 'c\\'d': 2},\n  },\n};\n";
     const keys = variablePathAt('{% $user["a\\"b"] %}', 12);

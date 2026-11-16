@@ -176,9 +176,8 @@ function frontmatterKeyRange(text, key) {
  * 各キーは、1 つ前のキーの値のオブジェクトの直下のプロパティからだけ探す（入れ子の同名のキーは選ばない）。なければ -1。
  */
 function findKeyPath(source, keys) {
-    const variables = /\bvariables\s*:/.exec(source);
-    if (!variables) return -1;
-    let value = variables.index + variables[0].length;
+    let value = findVariables(source);
+    if (value < 0) return -1;
     let found = -1;
     for (const key of keys) {
         const open = skipTrivia(source, value);
@@ -189,6 +188,34 @@ function findKeyPath(source, keys) {
         value = property.value;
     }
     return found;
+}
+
+/** [source] のプロパティ `variables`（`variables:`、`"variables":`）の値の先頭（`:` の直後）。文字列、コメント、正規表現の中は除く。なければ -1。 */
+function findVariables(source) {
+    let i = 0;
+    while (i < source.length) {
+        const char = source[i];
+        let end;
+        let name = null;
+        if (/[A-Za-z_$]/.test(char)) {
+            end = i;
+            while (end < source.length && /[\w$]/.test(source[end])) end++;
+            if (source[i - 1] !== ".") name = source.slice(i, end);
+        } else if (char === '"' || char === "'") {
+            end = skipString(source, i);
+            name = decodeString(source.slice(i + 1, end - 1));
+        } else {
+            const literal = skipLiteral(source, i);
+            i = literal >= 0 ? literal : i + 1;
+            continue;
+        }
+        if (name === "variables") {
+            const colon = skipTrivia(source, end);
+            if (source[colon] === ":") return colon + 1;
+        }
+        i = end;
+    }
+    return -1;
 }
 
 /**
