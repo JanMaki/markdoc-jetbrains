@@ -83,15 +83,12 @@ object MarkdocPathResolver {
     }
 
     /**
-     * [target] のディレクトリからの [path]。[last] ならパス全体をファイルのパスに読み替えて探し、
-     * 読み替えたファイルがなければ書いたとおりのパスで探す。
+     * [target] のディレクトリからの [path]。[last] ならパス全体をファイルのパスに読み替えて探す
+     * （読み替えたファイルがなければ、書いたとおりのパスは探さない）。読み替えられなければ書いたとおりのパスで探す。
      */
     private fun find(base: Base, target: Target, path: String, last: Boolean): VirtualFile? {
-        if (last) {
-            val mapped = base.filePath(target, path)
-            if (mapped != null && mapped != path) target.directory.findFileByRelativePath(mapped)?.let { return it }
-        }
-        return target.directory.findFileByRelativePath(path)
+        val mapped = if (last) base.filePath(target, path) ?: path else path
+        return target.directory.findFileByRelativePath(mapped)
     }
 
     /** 設定の `path` のディレクトリ。なければプロジェクトルート。 */
