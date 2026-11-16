@@ -74,12 +74,15 @@ class TsconfigAliases {
         if (!this.root) return [];
         const file = path.join(this.root, "tsconfig.json");
         if (mtimeOf(file) === null) return [];
-        const fresh = this.cache && [...this.cache.mtimes].every(([dependency, mtime]) => mtimeOf(dependency) === mtime);
-        if (!fresh) {
-            const seen = new Set();
-            const entries = readAliases(file, seen);
-            // 読んだ（読もうとした）ファイルの更新時刻。読んだ後に変わっていれば次回読み直す
-            this.cache = {entries, mtimes: new Map([...seen].map((dependency) => [dependency, mtimeOf(dependency)]))};
+        const unchanged = (mtimes) => [...mtimes].every(([dependency, mtime]) => mtimeOf(dependency) === mtime);
+        if (this.cache && unchanged(this.cache.mtimes)) return this.cache.entries;
+        // 読んでいる間に変わったファイルがあれば読み直す
+        for (let attempt = 0; attempt < 3; attempt++) {
+            // 読んだ（読もうとした）ファイルの、読む前の更新時刻。次回これと比べる
+            const mtimes = new Map();
+            const entries = readAliases(file, mtimes);
+            this.cache = {entries, mtimes};
+            if (unchanged(mtimes)) break;
         }
         return this.cache.entries;
     }
@@ -98,9 +101,10 @@ function mtimeOf(file) {
  * [file] の別名。`extends` は相対パスのものだけたどり、`paths` と `baseUrl` はそれぞれ子が親を上書きする。
  * 行き先は実際の（継承したものを含む）`baseUrl` から、なければ `paths` を書いた tsconfig のディレクトリから解決する
  * （TypeScript 4.1 以降）。`*` の前が長い（具体的な）別名から並べる（TypeScript と同じ優先順）。
+ * [mtimes] に、読んだファイルと読む前の更新時刻を加える。
  */
-function readAliases(file, seen) {
-    const {paths, pathsDir, baseUrl} = readOptions(file, seen);
+function readAliases(file, mtimes) {
+    const {paths, pathsDir, baseUrl} = readOptions(file, mtimes);
     if (!paths) return [];
     const base = baseUrl ?? pathsDir;
     return Object.entries(paths)
@@ -122,10 +126,10 @@ function readAliases(file, seen) {
  * [file] の実際の `paths`（と書いた tsconfig のディレクトリ）と `baseUrl`（書いた tsconfig から解決した絶対パス）。
  * 後の `extends` ほど、子ほど優先する。
  */
-function readOptions(file, seen) {
+function readOptions(file, mtimes) {
     let options = {paths: null, pathsDir: null, baseUrl: null};
-    if (seen.has(file) || seen.size > 10) return options;
-    seen.add(file);
+    if (mtimes.has(file) || mtimes.size > 10) return options;
+    mtimes.set(file, mtimeOf(file));
     let json;
     try {
         json = parseJsonc(fs.readFileSync(file, "utf8"));
@@ -137,7 +141,7 @@ function readOptions(file, seen) {
 
     for (const parent of [json.extends].flat()) {
         if (typeof parent !== "string" || !/^\.\.?[\\/]/.test(parent)) continue;
-        const inherited = readOptions(path.resolve(dir, parent.endsWith(".json") ? parent : `${parent}.json`), seen);
+        const inherited = readOptions(path.resolve(dir, parent.endsWith(".json") ? parent : `${parent}.json`), mtimes);
         if (inherited.paths) options = {...options, paths: inherited.paths, pathsDir: inherited.pathsDir};
         if (inherited.baseUrl) options = {...options, baseUrl: inherited.baseUrl};
     }
