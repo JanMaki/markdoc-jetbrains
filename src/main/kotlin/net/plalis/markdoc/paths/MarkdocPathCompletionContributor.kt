@@ -38,28 +38,33 @@ class MarkdocPathCompletionContributor : CompletionContributor() {
 
         val directoryPath = typed.substring(0, slash + 1).trim('/')
         // 別名の行き先が複数あれば、すべての行き先の中身を出す（同じ名前は先の行き先のもの）
-        val directories = base.directories.mapNotNull {
-            if (directoryPath.isEmpty()) it else it.findFileByRelativePath(directoryPath)
-        }.filter { it.isDirectory }
+        val directories = base.targets.mapNotNull { target ->
+            val directory = if (directoryPath.isEmpty()) target.directory
+            else target.directory.findFileByRelativePath(directoryPath)
+            directory?.takeIf { it.isDirectory }?.let { it to target }
+        }
         if (directories.isEmpty()) return
 
         val paths = result.withPrefixMatcher(prefix)
         val names = HashSet<String>()
-        for (child in directories.flatMap { it.children.asList() }) {
+        for ((directory, target) in directories) for (child in directory.children) {
             if (child.name.startsWith(".")) continue
             if (child == file) continue
             if (value.isPartial && !child.isDirectory && !MarkdocFiles.isMarkdoc(child)) continue
-            if (!names.add(child.name)) continue
-            paths.addElement(lookupElement(child))
+            // ファイル名は、別名の `*` の読み替え（`*.mdoc` の `.mdoc`）を戻した名前で出す
+            val name = if (child.isDirectory) child.name else base.pathName(target, child.name) ?: continue
+            if (name.isEmpty()) continue
+            if (!names.add(name)) continue
+            paths.addElement(lookupElement(child, name))
         }
         // パスの中では、言語サーバーなどほかの補完の候補は役に立たない
         paths.stopHere()
     }
 
-    /** [child] の補完候補。ディレクトリは末尾に `/` を付ける。 */
-    private fun lookupElement(child: VirtualFile): LookupElementBuilder =
+    /** [child] を [name] として書く補完候補。ディレクトリは末尾に `/` を付ける。 */
+    private fun lookupElement(child: VirtualFile, name: String): LookupElementBuilder =
         if (child.isDirectory) {
-            LookupElementBuilder.create(child, child.name)
+            LookupElementBuilder.create(child, name)
                 .withIcon(PlatformIcons.FOLDER_ICON)
                 .withTailText("/", true)
                 .withInsertHandler { context, _ ->
@@ -72,6 +77,6 @@ class MarkdocPathCompletionContributor : CompletionContributor() {
                     AutoPopupController.getInstance(context.project).scheduleAutoPopup(editor)
                 }
         } else {
-            LookupElementBuilder.create(child, child.name).withIcon(child.fileType.icon)
+            LookupElementBuilder.create(child, name).withIcon(child.fileType.icon)
         }
 }

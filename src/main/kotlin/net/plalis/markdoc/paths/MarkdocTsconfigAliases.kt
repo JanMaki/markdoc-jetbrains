@@ -10,8 +10,17 @@ import com.intellij.openapi.vfs.VirtualFile
  * 言語サーバーの `partials.js` と同じく、`extends` は相対パスのものだけたどる。
  */
 object MarkdocTsconfigAliases {
-    /** 別名。[prefix] は `*` より前（なければ全体）、[base] は継承を含む `baseUrl`（なければ `paths` を書いた tsconfig のディレクトリ）。 */
-    data class Alias(val prefix: String, val wildcard: Boolean, val targets: List<String>, val base: VirtualFile)
+    /**
+     * 別名。[prefix] は `*` より前（なければ全体）、[suffix] は `*` より後（別名が `@p/` に `*.mdoc` を続けたものなら
+     * `.mdoc`。なければ空）、[base] は継承を含む `baseUrl`（なければ `paths` を書いた tsconfig のディレクトリ）。
+     */
+    data class Alias(
+        val prefix: String,
+        val suffix: String,
+        val wildcard: Boolean,
+        val targets: List<String>,
+        val base: VirtualFile,
+    )
 
     /** `extends` をたどる深さの上限（循環対策）。 */
     private const val MAX_DEPTH = 10
@@ -40,7 +49,8 @@ object MarkdocTsconfigAliases {
             val targets =
                 value.asJsonArray.mapNotNull { it.takeIf { e -> e.isJsonPrimitive }?.asString?.removePrefix("./") }
             val star = pattern.indexOf('*')
-            Alias(if (star < 0) pattern else pattern.substring(0, star), star >= 0, targets, base)
+            if (star < 0) Alias(pattern, "", false, targets, base)
+            else Alias(pattern.substring(0, star), pattern.substring(star + 1), true, targets, base)
         }.sortedByDescending { it.prefix.length }
     }
 
