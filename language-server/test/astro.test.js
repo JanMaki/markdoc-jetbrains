@@ -97,6 +97,12 @@ test("スキーマのキーは親のオブジェクトの直下のプロパテ�
     assert.strictEqual(findKeyPath(source, ["a", "d"]), -1);
 });
 
+test("正規表現リテラルの中の括弧と引用符を読み飛ばす", () => {
+    const source = "export default {\n  variables: {\n    pattern: /[}\\]\"]+/g,\n    after: 1,\n    ratio: 4 / 2 / 1,\n    last: 2,\n  },\n};\n";
+    assert.strictEqual(findKeyPath(source, ["after"]), source.indexOf("after"));
+    assert.strictEqual(findKeyPath(source, ["last"]), source.indexOf("last"));
+});
+
 test("定義ジャンプはスキーマの変数の直下のプロパティへ移動する", () => {
     const {MarkdocDefinitionProvider} = require("../src/definition");
     const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "markdoc-definition-")));

@@ -193,7 +193,7 @@ function findKeyPath(source, keys) {
 
 /**
  * [open] の `{` から始まるオブジェクトの直下のプロパティ [key] の、キーの位置と値の先頭（`:` の直後）。
- * 文字列、テンプレート文字列、コメントの中と、入れ子の括弧の中は読み飛ばす。なければ `null`。
+ * 文字列、テンプレート文字列、コメント、正規表現の中と、入れ子の括弧の中は読み飛ばす。なければ `null`。
  */
 function directProperty(source, open, key) {
     let depth = 0;
@@ -222,8 +222,9 @@ function directProperty(source, open, key) {
             const colon = skipTrivia(source, end);
             if (source[colon] === ":" && name === key) return {offset, value: colon + 1};
             i = end;
-        } else if (char === '"' || char === "'" || char === "`") {
-            i = skipString(source, i);
+        } else if (char === '"' || char === "'" || char === "`" || char === "/") {
+            const literal = skipLiteral(source, i);
+            i = literal >= 0 ? literal : i + 1;
         } else if (char === "{" || char === "[" || char === "(") {
             depth++;
             i++;
@@ -263,6 +264,52 @@ function skipString(source, open) {
     let i = open + 1;
     while (i < source.length && source[i] !== quote) i += source[i] === "\\" ? 2 : 1;
     return Math.min(i + 1, source.length);
+}
+
+/** 直後に置くと `/` が正規表現の始まりになるキーワード。 */
+const REGEX_KEYWORDS = new Set(["return", "typeof", "instanceof", "in", "of", "new", "delete", "void", "throw", "case", "do", "else", "yield", "await"]);
+
+/** [i] から始まる文字列、テンプレート文字列、コメント、正規表現リテラルの直後の位置。どれでもなければ -1。 */
+function skipLiteral(source, i) {
+    const char = source[i];
+    if (char === '"' || char === "'" || char === "`") return skipString(source, i);
+    if (char !== "/") return -1;
+    if (source[i + 1] === "/" || source[i + 1] === "*") return skipTrivia(source, i);
+    return regexAllowed(source, i) ? skipRegex(source, i) : -1;
+}
+
+/** [i] の `/` が除算ではなく正規表現の始まりか（直前の字句で判断する）。 */
+function regexAllowed(source, i) {
+    let j = i - 1;
+    while (j >= 0 && /\s/.test(source[j])) j--;
+    if (j < 0) return true;
+    if (/[)\]}]/.test(source[j])) return false;
+    if (!/[\w$]/.test(source[j])) return true;
+    let start = j;
+    while (start > 0 && /[\w$]/.test(source[start - 1])) start--;
+    return REGEX_KEYWORDS.has(source.slice(start, j + 1));
+}
+
+/** [open] の `/` から始まる正規表現リテラル（フラグを含む）の直後の位置。行内で閉じていなければ -1。 */
+function skipRegex(source, open) {
+    let i = open + 1;
+    let inClass = false;
+    while (i < source.length && source[i] !== "\n") {
+        const char = source[i];
+        if (char === "\\") {
+            i += 2;
+            continue;
+        }
+        if (char === "[") inClass = true;
+        else if (char === "]") inClass = false;
+        else if (char === "/" && !inClass) {
+            i++;
+            while (i < source.length && /[A-Za-z]/.test(source[i])) i++;
+            return i;
+        }
+        i++;
+    }
+    return -1;
 }
 
 /** 文字の位置を LSP の行と列にする。 */
