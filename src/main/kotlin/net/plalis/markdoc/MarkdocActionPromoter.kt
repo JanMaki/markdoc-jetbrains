@@ -1,6 +1,7 @@
 package net.plalis.markdoc
 
 import com.intellij.openapi.actionSystem.*
+import net.plalis.markdoc.paths.MarkdocPathValue
 
 /**
  * Markdoc ファイルのタグ（`{% … %}`）の中では、Ctrl+B を太字の切り替えではなく「宣言へ移動」にする。
@@ -16,8 +17,12 @@ class MarkdocActionPromoter : ActionPromoter {
         val project = context.getData(CommonDataKeys.PROJECT) ?: return emptyList()
         val file = context.getData(CommonDataKeys.VIRTUAL_FILE) ?: return emptyList()
         if (!MarkdocFiles.isMarkdoc(file)) return emptyList()
+        val text = editor.document.charsSequence
+        val offset = editor.caretModel.offset
         val allowComments = MarkdocConfigReader.allowComments(project)
-        if (!MarkdocTagScanner.isInTagAt(editor.document.charsSequence, editor.caretModel.offset, allowComments)) {
+        // isInTagAt はフェンスの中を除くので、処理するフェンス（`process=false` なし）の中のタグのパスは別に確かめる。
+        // MarkdocPathValue.at はタグの中のパスだけを返し、インラインコードと `process=false` のフェンスの中は除く
+        if (!MarkdocTagScanner.isInTagAt(text, offset, allowComments) && MarkdocPathValue.at(text, offset) == null) {
             return emptyList()
         }
         val manager = ActionManager.getInstance()

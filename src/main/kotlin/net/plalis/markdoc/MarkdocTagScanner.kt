@@ -142,10 +142,16 @@ object MarkdocTagScanner {
         return end <= tagEnd
     }
 
-    /** [offset] の文字がタグの中かどうか（コードの中は除く）。`%}` の直後はタグの外。 */
+    /**
+     * [offset] の文字がタグの中かどうか（コードの中は除く）。`%}` の直後はタグの外。
+     * コードの範囲とタグは同じ [allowComments] で 1 度に走査する（コメントの中のフェンスはコードを始めない）。
+     */
     fun isInTagAt(text: CharSequence, offset: Int, allowComments: Boolean): Boolean {
-        if (offset >= text.length || isInCode(text, offset)) return false
-        return isInTag(text, scan(text, allowComments), offset, offset + 1)
+        if (offset >= text.length) return false
+        val code = ArrayList<IntRange>()
+        val tokens = scan(text, code, allowComments)
+        if (code.any { offset in it }) return false
+        return isInTag(text, tokens, offset, offset + 1)
     }
 
     /** 終わりが [offset] より後ろにある最初のトークンの位置。なければ `tokens.size`（トークンは重ならず昇順に並ぶ）。 */
