@@ -24,7 +24,7 @@ class MarkdocTagAnnotator : Annotator, DumbAware {
         if (range.isEmpty) return
         val file = element.containingFile ?: return
         val virtualFile = file.virtualFile ?: return
-        if (!MarkdocFiles.isMarkdoc(virtualFile)) return
+        if (!MarkdocFiles.isMarkdoc(file.project, virtualFile)) return
 
         val tokens = MarkdocTagTokens.of(file)
         var index = MarkdocTagScanner.firstEndingAfter(tokens, range.startOffset)

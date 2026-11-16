@@ -8,7 +8,7 @@ import com.intellij.openapi.util.io.FileUtil
 import com.intellij.openapi.vfs.VFileProperty
 import com.intellij.openapi.vfs.VfsUtil
 import com.intellij.openapi.vfs.VirtualFile
-import net.plalis.markdoc.config.MarkdocAstroProject
+import net.plalis.markdoc.config.framework.MarkdocFramework
 import net.plalis.markdoc.settings.MarkdocSettings
 import java.io.IOException
 import java.nio.file.InvalidPathException
@@ -47,10 +47,10 @@ object MarkdocConfigFile {
         ]
     """.trimIndent() + "\n"
 
-    /** 設定ファイルを作るときの中身。Astro のプロジェクトなら Astro 向けの雛形。 */
+    /** 設定ファイルを作るときの中身。[MarkdocFramework] のどれかのプロジェクトなら、そのフレームワーク向けの雛形。 */
     fun templateText(project: Project): String {
         val root = project.guessProjectDir() ?: return TEMPLATE_TEXT
-        return if (MarkdocAstroProject.isAstro(root)) MarkdocAstroProject.templateText(root) else TEMPLATE_TEXT
+        return MarkdocFramework.of(root)?.templateText(root) ?: TEMPLATE_TEXT
     }
 
     /**

@@ -41,12 +41,44 @@
           "$ref": "#/definitions/markdoc"
         },
         "partialPaths": {
-          "enum": [
-            "content",
-            "relative"
+          "anyOf": [
+            {
+              "enum": [
+                "content",
+                "relative"
+              ]
+            },
+            {
+              "type": "object",
+              "required": [
+                "directory"
+              ],
+              "properties": {
+                "directory": {
+                  "type": "string",
+                  "description": "Directory that contains the partials, relative to the project root (for example markdoc/partials)."
+                }
+              },
+              "additionalProperties": false
+            }
           ],
           "default": "content",
-          "description": "How the file attribute of {% partial %} is resolved (specific to this plugin). \"content\" (default): relative to the content directory (path), as in the upstream language server. \"relative\": as in Astro (@astrojs/markdoc): ./ and ../ from the file that contains the tag, / from the project root, aliases from compilerOptions.paths in tsconfig.json, and other paths from the file that contains the tag."
+          "description": "How the file attribute of {% partial %} is resolved (specific to this plugin). \"content\" (default): relative to the content directory (path), as in the upstream language server. \"relative\": as in Astro (@astrojs/markdoc): ./ and ../ from the file that contains the tag, / from the project root, aliases from compilerOptions.paths in tsconfig.json, and other paths from the file that contains the tag. {\"directory\": \"...\"}: as in @markdoc/next.js: relative to the given directory, including paths that start with /. Partials outside the project root are not resolved."
+        },
+        "contentPaths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Directories to scan for Markdoc documents, relative to the project root (specific to this plugin). When set, they are scanned instead of path. Inside them, files with an extension in markdocExtensions are also treated as Markdoc. node_modules, .next and .git are never scanned."
+        },
+        "markdocExtensions": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^\\.?[^./\\\\]+$"
+          },
+          "description": "Extensions (for example \".md\") that are treated as Markdoc inside contentPaths, or inside path when contentPaths is not set (specific to this plugin). .mdoc, .markdoc and *.markdoc.md are always treated as Markdoc."
         },
         "frontmatterVariable": {
           "type": "string",
@@ -106,22 +138,23 @@
       "properties": {
         "path": {
           "type": "string",
-          "description": "Path to the schema module, relative to the project root."
+          "description": "Path to the schema module, relative to the project root. With type \"nextjs\", the schema directory (for example markdoc)."
         },
         "type": {
           "enum": [
             "node",
-            "esm"
+            "esm",
+            "nextjs"
           ],
-          "description": "Module format of the schema: \"node\" loads it with require (module.exports), \"esm\" with import. When omitted, it is loaded as \"esm\"."
+          "description": "Module format of the schema: \"node\" loads it with require (module.exports), \"esm\" with import. When omitted, it is loaded as \"esm\". \"nextjs\" (specific to this plugin) reads path as a schema directory of @markdoc/next.js: tags, nodes, functions and config (files or folders with index, .js/.jsx/.ts/.tsx and more) are combined into {tags, nodes, functions, ...config}. TypeScript and JSX are converted with sucrase, and React, Next.js, stylesheets and images are replaced with stubs."
         },
         "property": {
           "type": "string",
-          "description": "Name of the exported property that contains the schema. When omitted, the whole module.exports (node) or the default export (esm) is used."
+          "description": "Name of the exported property that contains the schema. When omitted, the whole module.exports (node) or the default export (esm) is used. Ignored with type \"nextjs\"."
         },
         "watch": {
           "type": "boolean",
-          "description": "Reload the schema automatically when the file changes."
+          "description": "Reload the schema automatically when the file changes. With type \"nextjs\", the files that the schema loaded and the schema directory are checked."
         }
       },
       "additionalProperties": false

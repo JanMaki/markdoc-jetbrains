@@ -34,7 +34,7 @@ class MarkdocLspClientDescriptor(
     private val config: JsonObject,
 ) : ProjectWideLspClientDescriptor(project, "Markdoc") {
 
-    override fun isSupportedFile(file: VirtualFile): Boolean = MarkdocFiles.isMarkdoc(file)
+    override fun isSupportedFile(file: VirtualFile): Boolean = MarkdocFiles.isMarkdoc(project, file)
 
     /**
      * Node.js の実行設定（実行ファイル、環境変数など）を IDE のインタープリター設定から引き継いでサーバーを起動する。

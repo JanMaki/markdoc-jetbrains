@@ -4,7 +4,8 @@
 などで Markdoc の補完・検証を提供する非公式プラグイン。
 
 - 対象 IDE：2026.1.4 以降の、Node.js プラグインと Markdown プラグインを持つ JetBrains IDE（下記の「対応 IDE」を参照）
-- 対象ファイル：`.mdoc`、`.markdoc`、`*.markdoc.md`（Markdown ファイルとして扱う）
+- 対象ファイル：`.mdoc`、`.markdoc`、`*.markdoc.md`（Markdown ファイルとして扱う）。設定の `markdocExtensions` で、
+  `contentPaths` の中の `.md` なども対象にできる（[独自のキー](#独自のキー)）
 - 実行時に必要なもの：Node.js（プロジェクトの Node.js インタープリター設定を使う）
 
 ## 対応 IDE
@@ -28,7 +29,7 @@ Node.js プラグインと Markdown プラグインの両方が使える IDE に
 | 注釈の補完         | `# 見出し {% ` のようにノードの後ろの `{%` で、そのノード（見出し・リスト項目・段落・表のセル）の属性と `class`・`id` を出す。タグ名は出さない（段落だけ、インラインのタグもあり得るので出す）。表のセルは `align`・`colspan`・`rowspan`、見出しセルは `width` も                                                                                                                                                                    |
 | 属性値の補完       | `type=` や `type="` の直後から、スキーマの `matches` と Boolean の値を出す。属性名を選んだ直後にも自動で出る                                                                                                                                                                                                                                                                                                                         |
 | リンクの補完       | `[text](/` の後で、フロントマターのルートを出す                                                                                                                                                                                                                                                                                                                                                                                      |
-| 定義ジャンプ・参照 | `{% partial file="…" /%}` から partial のファイルへ移動し、partial の使用箇所を探す。タグ名の上では、タグを描画するコンポーネント（Astro の `component()` で指定した `.astro` ファイル）へ移動する。変数の上では、フロントマターの変数（`$markdoc.frontmatter.title`、`frontmatterVariable` の `$frontmatter.title`）ならフロントマターのそのトップレベルのキーへ、スキーマの `variables` ならスキーマのファイルのそのキーへ移動する |
+| 定義ジャンプ・参照 | `{% partial file="…" /%}` から partial のファイルへ移動し、partial の使用箇所を探す。タグ名の上では、タグを描画するコンポーネント（Astro の `component()` で指定した `.astro` ファイルか、`schema.type: "nextjs"` のスキーマが `render` に渡したコンポーネントの import 元のファイル）へ移動し、分からなければスキーマのファイルでタグを定義した位置へ移動する。変数の上では、フロントマターの変数（`$markdoc.frontmatter.title`、`frontmatterVariable` の `$frontmatter.title`）ならフロントマターのそのトップレベルのキーへ、スキーマの `variables` ならスキーマのファイルのそのキーへ移動する |
 | その他             | フォーマット、コード折りたたみ、ドキュメントリンク、Quick Fix                                                                                                                                                                                                                                                                                                                                                                        |
 
 ### プラグイン独自
@@ -97,15 +98,28 @@ Astro のプロジェクトで設定ファイルがなくても、プロジェ�
 
 ### 独自のキー
 
-`partialPaths`・`frontmatterVariable`・`ignoreUndefinedVariables` は Astro 以外でも使える。上流の言語サーバー（VS Code
+次のキーは Astro 以外でも使える。上流の言語サーバー（VS Code
 の拡張機能）は
 これらを読まないので、同じ設定ファイルを VS Code でも使う場合は、そちらでは効かない。
 
-| キー                       | 値                                                                 | 既定        |
-|----------------------------|--------------------------------------------------------------------|-------------|
-| `partialPaths`             | `"content"`（`path` から）・`"relative"`（上記）                   | `"content"` |
-| `frontmatterVariable`      | フロントマターを入れる変数の名前（`$` は付けても付けなくてもよい） | なし        |
-| `ignoreUndefinedVariables` | 真なら「Undefined variable」を報告しない                           | `false`     |
+| キー                       | 値                                                                                                                              | 既定        |
+|----------------------------|---------------------------------------------------------------------------------------------------------------------------------|-------------|
+| `partialPaths`             | `"content"`（`path` から）・`"relative"`（上記）・`{"directory": "…"}`（プロジェクトルートからのそのディレクトリから。先頭の `/` もそのディレクトリから） | `"content"` |
+| `frontmatterVariable`      | フロントマターを入れる変数の名前（`$` は付けても付けなくてもよい）                                                              | なし        |
+| `ignoreUndefinedVariables` | 真なら「Undefined variable」を報告しない                                                                                        | `false`     |
+| `contentPaths`             | スキャンするディレクトリ（プロジェクトルートからのパス）の配列。あれば `path` の代わりにスキャンする                            | なし        |
+| `markdocExtensions`        | `contentPaths`（なければ `path`）の中で Markdoc ファイルとして扱う拡張子の配列（`".md"` など）                                  | なし        |
+| `schema.type: "nextjs"`    | `schema.path` を `@markdoc/next.js` のスキーマのディレクトリとして読む（下記）                                                  | なし        |
+
+`.mdoc`・`.markdoc`・`*.markdoc.md` は設定によらず Markdoc ファイルとして扱う。`.md` は `markdocExtensions` に書いたときだけ、
+`contentPaths` の中で Markdoc ファイルとして扱う。スキャンでは、`contentPaths` があってもなくても `node_modules`・`.next`・`.git`
+の中には入らない。
+
+`schema.type` を `"nextjs"` にすると、`schema.path` のディレクトリから `tags`・`nodes`・`functions`・`config`（ファイルか、
+フォルダの `index`。拡張子は `.js`・`.jsx`・`.ts`・`.tsx` など）を読み、`{tags, nodes, functions, ...config}` にまとめる。
+TypeScript と JSX は同梱の sucrase で変換し、React と Next.js のパッケージ、スタイルシート、画像、読み込めないパッケージは
+スタブ（呼んでもプロパティを読んでも失敗しない値）に置き換える。`schema.watch` が真なら、読み込んだファイルとスキーマの
+ディレクトリの更新時刻を確かめ、変わっていれば読み直す。
 
 ## コメント
 
@@ -165,13 +179,14 @@ IDE の再起動が必要。
 | `capabilities.js` | 上流は補完などの機能を初期化後に動的に登録するが、JetBrains の LSP クライアントは動的登録を使わない。同じ機能を初期化時に宣言する                                                                                                                                         |
 | `completion.js`   | 上流の補完は出る場面が少なく、挿入テキストを resolve で補う（JetBrains は resolve の結果から説明文しか使わない）。補完を広げ（変数名・関数名を含む）、挿入テキストを最初から返す                                                                                          |
 | `validation.js`   | 上流は partial の存在を起動時のスキャン結果だけで判定し、後から書いた partial を「見つからない」と報告する。編集中の文書とディスク上のファイルで判定する。また、組み込みの `$markdoc.frontmatter.*` を未定義の変数と報告しないようにし、`ignoreUndefinedVariables` に従う |
-| `partials.js`     | partial の `file` の解決（`partialPaths`、tsconfig の別名）。上流は常にコンテンツのディレクトリから探す。検証・定義ジャンプ・リンク・Quick Fix で共用する                                                                                                                 |
-| `definition.js`   | partial の定義ジャンプと参照を `partials.js` で解決する（上流は `file` の文字列が同じものしか参照として探さない）。タグ名からコンポーネントへ、変数からフロントマターのキーとスキーマの `variables` への定義ジャンプを加える                                              |
+| `partials.js`     | partial の `file` の解決（`partialPaths` ごとの規則のクラス、tsconfig の別名）。上流は常にコンテンツのディレクトリから探す。検証・定義ジャンプ・リンク・Quick Fix で共用する                                                                                               |
+| `definition.js`   | partial の定義ジャンプと参照を `partials.js` で解決する（上流は `file` の文字列が同じものしか参照として探さない）。タグ名からコンポーネントかスキーマのタグの定義へ、変数からフロントマターのキーとスキーマの `variables` への定義ジャンプを加える                       |
 | `link.js`         | partial のドキュメントリンクの行き先を `partials.js` で解決する。解決できない partial にはリンクを出さない                                                                                                                                                                |
 | `codeaction.js`   | 「Inline contents of this partial」の partial を `partials.js` で解決する（上流は解決できないと ENOENT で失敗し続ける）。どのクライアントも実装していないコマンドを呼ぶ「Extract content to new partial」は出さない                                                       |
-| `schema.js`       | 上流は ESM のスキーマを絶対パスのまま import するので Windows で読めず、読み込みの失敗も握りつぶす。`file://` の URL で読み、失敗したら理由を通知する                                                                                                                     |
+| `schema.js`       | 上流は ESM のスキーマを絶対パスのまま import するので Windows で読めず、読み込みの失敗も握りつぶす。`schema.type` ごとの読み込み方のクラスで、`file://` の URL で読み、失敗したら理由を通知する。`"nextjs"` のスキーマのディレクトリも読む                                 |
+| `module-loader.js` | `schema.type: "nextjs"` のスキーマが import するプロジェクトのファイル（TypeScript・JSX）を sucrase で変換して読み、React・Next.js などをスタブにする                                                                                                                   |
 | `variables.js`    | 補完と検証で共有する、文書から参照できる変数（設定の `variables`、`$markdoc.frontmatter`、`frontmatterVariable`）の組み立て                                                                                                                                               |
-| `scanner.js`      | Windows でドライブ文字の大文字・小文字と区切り文字が食い違い、partial が見つからない。パスの表記をそろえる                                                                                                                                                                |
+| `scanner.js`      | Windows でドライブ文字の大文字・小文字と区切り文字が食い違い、partial が見つからない。パスの表記をそろえる。また、上流は `node_modules` の中までスキャンする。`node_modules`・`.next`・`.git` に入らず、`contentPaths` があればそのディレクトリだけをスキャンする |
 | `comments.js`     | 同梱する Markdoc のコメントの規則の不具合で、サーバーが応答しなくなる。直した規則に差し替える（暫定。[同梱する Markdoc の不具合の回避](#同梱する-markdoc-の不具合の回避暫定)）                                                                                            |
 
 プラグイン側でも、サーバーが定義ジャンプなどの行き先を URI ではなくファイルパスで返す問題に対応している（
@@ -182,6 +197,8 @@ IDE の再起動が必要。
 ```
 src/main/kotlin/net/plalis/markdoc/
   MarkdocFiles.kt                    Markdoc ファイルの判定
+  MarkdocFileScope.kt                contentPaths・markdocExtensions で Markdoc ファイルとして扱う範囲
+  MarkdocProjectConfig.kt            設定から作る値（上の範囲）のキャッシュ
   MarkdocConfigReader.kt             markdoc.config.json の読み込みと初期化オプションの組み立て
   MarkdocConfigFile.kt               markdoc.config.json の雛形と作成
   MarkdocTagScanner.kt               タグの中のトークンの切り出し（色分けとパスの特定で共用）
@@ -195,13 +212,17 @@ src/main/kotlin/net/plalis/markdoc/
   lsp/MarkdocLspGotoDeclarationHandler.kt  タグの中の Ctrl+B を言語サーバーの定義ジャンプで行う（見出しの中でも効くように）
   lsp/MarkdocServerResolver.kt          サーバーの場所の解決（設定で指定がなければ同梱）
   settings/                             プロジェクト設定の保存と設定画面
-  config/                               設定ファイルがないときの通知と、New メニューからの作成、Astro のプロジェクトの判定と雛形
+  config/                               設定ファイルがないときの通知と、New メニューからの作成
+  config/framework/                     フレームワーク（Astro）のプロジェクトの判定と雛形
+  config/javascript/                    フレームワークの設定ファイル（JavaScript）の読み取り
 src/main/resources/META-INF/
   plugin.xml                         必須の拡張（ファイルタイプ、入力補助）
   lsp.xml                            LSP API がある IDE でだけ読み込む拡張
 language-server/
   src/                               同梱サーバーのエントリーポイントと差し替え
-  build.mjs                          esbuild で 1 ファイルにまとめる
+  build.mjs                          esbuild で 1 ファイルにまとめ、同梱した依存のライセンス（LICENSE-third-party.txt）を添える
+  test/                              node --test のテスト
+src/test/kotlin/                     プラグインのテスト（./gradlew test）
 samples/basic/                       動作確認用の Markdoc プロジェクト
 samples/astro/                       Astro（@astrojs/markdoc）での動作確認用のプロジェクト
 ```
@@ -210,6 +231,7 @@ samples/astro/                       Astro（@astrojs/markdoc）での動作確�
 
 ```bash
 ./gradlew buildPlugin      # build/distributions/ に配布 ZIP を作る
+./gradlew test             # src/test のテストを実行する
 ./gradlew verifyPlugin     # Plugin Verifier で対応 IDE の 2026.1.4 との互換性を検査する
 ./gradlew runIde           # samples/basic を開いたサンドボックスの WebStorm を起動する
 ./gradlew runIde -PlspTrace  # LSP のメッセージを log_runIde/language-services/ に記録する

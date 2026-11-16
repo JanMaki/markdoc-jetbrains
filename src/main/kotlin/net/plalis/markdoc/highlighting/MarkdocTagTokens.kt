@@ -42,7 +42,7 @@ object MarkdocTagTokens {
      */
     fun isInTag(file: PsiFile, start: Int, end: Int): Boolean {
         val viewProvider = file.viewProvider
-        return MarkdocFiles.isMarkdoc(viewProvider.virtualFile) &&
+        return MarkdocFiles.isMarkdoc(file.project, viewProvider.virtualFile) &&
                 MarkdocTagScanner.isInTag(viewProvider.contents, of(file), start, end)
     }
 }

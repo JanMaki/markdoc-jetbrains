@@ -5,7 +5,7 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.project.guessProjectDir
 import com.intellij.openapi.vfs.VfsUtilCore
 import com.intellij.openapi.vfs.VirtualFile
-import net.plalis.markdoc.config.MarkdocAstroProject
+import net.plalis.markdoc.config.framework.MarkdocFramework
 import net.plalis.markdoc.settings.MarkdocSettings
 import java.io.IOException
 import java.nio.file.Files
@@ -113,10 +113,10 @@ object MarkdocConfigReader {
      * サーバーは初期化オプションの `config` がないと起動時に例外で終了するため、
      * スキーマなしでも構文エラーの検出などが動くように `root` と `path` だけを渡す。
      * 作成時の雛形（[MarkdocConfigFile.TEMPLATE_TEXT]）は例のパスを含むので、ここでは使わない。
-     * Astro のプロジェクトなら [MarkdocAstroProject.defaultEntry] を使う。
+     * [MarkdocFramework] のどれかのプロジェクトなら、その [MarkdocFramework.defaultEntry] を使う。
      */
     fun defaultConfig(project: Project): JsonObject {
-        val config = project.guessProjectDir()?.let(MarkdocAstroProject::defaultEntry) ?: JsonObject()
+        val config = project.guessProjectDir()?.let { MarkdocFramework.of(it)?.defaultEntry(it) } ?: JsonObject()
         config.addProperty("root", projectRoot(project) ?: "")
         if (!config.has("path")) config.addProperty("path", "")
         return config

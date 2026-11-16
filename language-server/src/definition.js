@@ -18,9 +18,27 @@ const VARIABLE = /\$[A-Za-z_][\w-]*(?:\.[A-Za-z_][\w-]*|\[\s*(?:"(?:[^"\\]|\\.)*
 const SEGMENT = /\$?([A-Za-z_][\w-]*)|\[\s*(?:(\d+)|"((?:[^"\\]|\\.)*)")\s*\]/g;
 
 /**
+ * タグの `render` からコンポーネントのファイルを探す方法。[COMPONENT_LOCATORS] の順に試す。
+ *
+ * @callback ComponentLocator
+ * @param {unknown} render タグの `render` の値
+ * @param {MarkdocDefinitionProvider} provider 定義ジャンプのプロバイダー（設定とサービスを使う）
+ * @returns {string | null} ファイルの絶対パス。見つからなければ `null`
+ */
+
+/** @type {ComponentLocator[]} */
+const COMPONENT_LOCATORS = [
+    // Astro の component()
+    (render, provider) => resolveComponent(render, provider.config.root),
+    // スキーマを読んだときに分かった import 元
+    (render, provider) => provider.services.Schema.source?.componentFile(render) ?? null,
+];
+
+/**
  * 定義ジャンプと参照。上流からの変更点：
  * - partial は [partialResolver] で解決し、参照は解決先が同じものを探す（上流は `file` の文字列で比べる）
- * - タグ名からは、タグを描画するコンポーネント（Astro の `component()`）へ移動する
+ * - タグ名からは、タグを描画するコンポーネント（[COMPONENT_LOCATORS] で探す）へ移動する。
+ *   見つからなければ、スキーマのファイルでタグを定義した位置へ移動する
  * - 変数からは、フロントマターのキーかスキーマの `variables` へ移動する
  *
  * 移動先は上流と同じくファイルパスで返す。
@@ -32,7 +50,18 @@ class MarkdocDefinitionProvider extends Plugins.DefinitionProvider {
         if (component) return {uri: component, range: FILE_START};
         const variable = line && this.variableAt(params, line);
         if (variable) return variable;
+        const partial = this.partialAt(params);
+        if (partial) return partial;
+        return (line && this.tagDefinitionAt(params, line)) || null;
+    }
 
+    /**
+     * カーソルの行の partial のファイル。
+     *
+     * @param {object} params LSP の定義ジャンプの引数
+     * @returns {object | null} 移動先。行に partial がないか、解決できなければ `null`
+     */
+    partialAt(params) {
         const ast = this.services.Documents.ast(params.textDocument.uri);
         if (!ast) return null;
         const file = this.getPartialAtLine(ast, params.position.line);
@@ -102,26 +131,68 @@ class MarkdocDefinitionProvider extends Plugins.DefinitionProvider {
     /** スキーマのファイルで [keys] を文字列として探す（スキーマは JavaScript なので）。 */
     schemaVariable(uri, keys) {
         if (!this.hasSchemaVariable(uri, keys[0])) return null;
+        const names = keys.filter((key) => typeof key === "string");
+        return this.findInSchemaFiles((source) => findKeyPath(source, names));
+    }
+
+    /**
+     * スキーマを読み込んだファイル。読み込み方（`Schema.source`）が分からなければ `schema.path` のファイル。
+     *
+     * @returns {string[]} 絶対パス
+     */
+    schemaFiles() {
+        const source = this.services.Schema.source;
+        if (source) return source.files();
         const {schema, root} = this.config;
-        if (!schema?.path || !root) return null;
-        const absolute = path.resolve(root, schema.path);
-        let source;
-        try {
-            source = fs.readFileSync(absolute, "utf8");
-        } catch {
-            return null;
+        return schema?.path && root ? [path.resolve(root, schema.path)] : [];
+    }
+
+    /**
+     * [schemaFiles] を順に読み、[find] が返した位置を最初に見つけたファイルのその位置。
+     *
+     * @param {(source: string) => number} find ファイルの中身から位置を探す関数。見つからなければ -1 を返す
+     * @returns {object | null} 移動先。どのファイルにもなければ `null`
+     */
+    findInSchemaFiles(find) {
+        for (const file of this.schemaFiles()) {
+            let source;
+            try {
+                source = fs.readFileSync(file, "utf8");
+            } catch {
+                continue;
+            }
+            const offset = find(source);
+            if (offset < 0) continue;
+            const position = positionAt(source, offset);
+            return {uri: file, range: {start: position, end: position}};
         }
-        const offset = findKeyPath(source, keys.filter((key) => typeof key === "string"));
-        if (offset < 0) return null;
-        const position = positionAt(source, offset);
-        return {uri: absolute, range: {start: position, end: position}};
+        return null;
     }
 
     /** カーソルの下のタグを描画するコンポーネントのファイル。 */
     componentAt(params, line) {
         const name = tagNameAt(line, params.position.character);
         const render = name && this.services.Schema.get(params.textDocument.uri)?.tags?.[name]?.render;
-        return resolveComponent(render, this.config.root);
+        if (!render) return null;
+        for (const locate of COMPONENT_LOCATORS) {
+            const file = locate(render, this);
+            if (file) return file;
+        }
+        return null;
+    }
+
+    /**
+     * カーソルの下のタグを、スキーマのファイルで定義した位置。スキーマにないタグなら探さない。
+     *
+     * @param {object} params LSP の定義ジャンプの引数
+     * @param {string} line カーソルの行のテキスト
+     * @returns {object | null} 移動先。見つからなければ `null`
+     */
+    tagDefinitionAt(params, line) {
+        const name = tagNameAt(line, params.position.character);
+        const tags = name && this.services.Schema.get(params.textDocument.uri)?.tags;
+        if (!tags || !Object.hasOwn(tags, name)) return null;
+        return this.findInSchemaFiles((source) => findDefinition(source, name));
     }
 }
 
@@ -266,6 +337,57 @@ function directProperty(source, open, key) {
     return null;
 }
 
+/** 直後の名前を定義とみなすキーワード。 */
+const DECLARATION_KEYWORDS = new Set(["const", "let", "var", "function", "class"]);
+
+/**
+ * [source] で [name] を定義した位置（名前の先頭。引用符付きのキーは引用符の次）。値がオブジェクトリテラルの
+ * プロパティ（`name: {`、`"name": {`）の最初のものを選び、なければ最初の宣言（`const name`、`function name` など）。
+ * 文字列、コメント、正規表現の中は除く。
+ *
+ * @param {string} source JavaScript のソース
+ * @param {string} name 探す名前
+ * @returns {number} 位置。なければ -1
+ */
+function findDefinition(source, name) {
+    let declaration = -1;
+    let previousWord = null;
+    let i = 0;
+    while (i < source.length) {
+        const char = source[i];
+        let end;
+        let key;
+        let word = null;
+        let offset = i;
+        if (/[A-Za-z_$]/.test(char)) {
+            end = i;
+            while (end < source.length && /[\w$]/.test(source[end])) end++;
+            word = source.slice(i, end);
+            key = source[i - 1] === "." ? null : word;
+        } else if (char === '"' || char === "'") {
+            end = skipString(source, i);
+            key = decodeString(source.slice(i + 1, end - 1));
+            offset = i + 1;
+        } else {
+            const literal = skipLiteral(source, i);
+            // コメントと空白は前の語を残し、ほかの字句は前の語を消す
+            if (!/\s/.test(char) && !(char === "/" && (source[i + 1] === "/" || source[i + 1] === "*"))) {
+                previousWord = null;
+            }
+            i = literal >= 0 ? literal : i + 1;
+            continue;
+        }
+        if (key === name) {
+            const colon = skipTrivia(source, end);
+            if (source[colon] === ":" && source[skipTrivia(source, colon + 1)] === "{") return offset;
+            if (word !== null && DECLARATION_KEYWORDS.has(previousWord) && declaration < 0) declaration = offset;
+        }
+        previousWord = word;
+        i = end;
+    }
+    return declaration;
+}
+
 /** [from] から空白とコメントを読み飛ばした位置。 */
 function skipTrivia(source, from) {
     let i = from;
@@ -386,9 +508,11 @@ function samePath(a, b) {
 
 module.exports = {
     MarkdocDefinitionProvider,
+    COMPONENT_LOCATORS,
     tagNameAt,
     resolveComponent,
     variablePathAt,
     frontmatterKeyRange,
-    findKeyPath
+    findKeyPath,
+    findDefinition,
 };

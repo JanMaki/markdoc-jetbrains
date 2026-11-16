@@ -47,7 +47,7 @@ class MarkdocTypedHandler : TypedHandlerDelegate() {
     }
 
     /** このファイルが Markdoc ファイルかどうか。 */
-    private fun PsiFile.isMarkdoc(): Boolean = virtualFile?.let(MarkdocFiles::isMarkdoc) == true
+    private fun PsiFile.isMarkdoc(): Boolean = virtualFile?.let { MarkdocFiles.isMarkdoc(project, it) } == true
 
     /** [offset] がコードの中かどうか。 */
     private fun Editor.isInCode(offset: Int): Boolean = MarkdocTagScanner.isInCode(document.charsSequence, offset)
