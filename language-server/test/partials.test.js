@@ -100,6 +100,19 @@ test("relative：extends した tsconfig を編集すると別名を読み直す
     assert.strictEqual(r.resolve("@p/shared.mdoc", from), path.join(root, "src/b/shared.mdoc"));
 });
 
+test("relative：extends した tsconfig の baseUrl から子の別名を解決する", () => {
+    const root = project({
+        "src/content/post.mdoc": "",
+        "src/partials/shared.mdoc": "",
+        "partials/shared.mdoc": "",
+        "config/tsconfig.base.json": `{"compilerOptions": {"baseUrl": "../src"}}`,
+        "tsconfig.json": `{"extends": "./config/tsconfig.base.json", "compilerOptions": {"paths": {"@p/*": ["partials/*"]}}}`,
+    });
+    const r = resolver(root, "src/content", {partialPaths: "relative"});
+    const from = uri(root, "src/content/post.mdoc");
+    assert.strictEqual(r.resolve("@p/shared.mdoc", from), path.join(root, "src/partials/shared.mdoc"));
+});
+
 test("UNC パスと絶対パスは扱わない", () => {
     const root = project(ASTRO);
     for (const options of [{}, {partialPaths: "relative"}]) {

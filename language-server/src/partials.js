@@ -95,31 +95,14 @@ function mtimeOf(file) {
 }
 
 /**
- * [file] の別名。`extends` は相対パスのものだけたどり、子の `paths` が親を丸ごと上書きする。
- * `*` の前が長い（具体的な）別名から並べる（TypeScript と同じ優先順）。
+ * [file] の別名。`extends` は相対パスのものだけたどり、`paths` と `baseUrl` はそれぞれ子が親を上書きする。
+ * 行き先は実際の（継承したものを含む）`baseUrl` から、なければ `paths` を書いた tsconfig のディレクトリから解決する
+ * （TypeScript 4.1 以降）。`*` の前が長い（具体的な）別名から並べる（TypeScript と同じ優先順）。
  */
 function readAliases(file, seen) {
-    if (seen.has(file) || seen.size > 10) return [];
-    seen.add(file);
-    let json;
-    try {
-        json = parseJsonc(fs.readFileSync(file, "utf8"));
-    } catch {
-        return [];
-    }
-    if (!json || typeof json !== "object") return [];
-    const dir = path.dirname(file);
-
-    let inherited = [];
-    for (const parent of [json.extends].flat()) {
-        if (typeof parent !== "string" || !/^\.\.?[\\/]/.test(parent)) continue;
-        inherited = readAliases(path.resolve(dir, parent.endsWith(".json") ? parent : `${parent}.json`), seen);
-    }
-
-    const {paths, baseUrl} = json.compilerOptions ?? {};
-    if (!paths || typeof paths !== "object") return inherited;
-    // baseUrl がなければ tsconfig のディレクトリから（TypeScript 4.1 以降）
-    const base = typeof baseUrl === "string" ? path.resolve(dir, baseUrl) : dir;
+    const {paths, pathsDir, baseUrl} = readOptions(file, seen);
+    if (!paths) return [];
+    const base = baseUrl ?? pathsDir;
     return Object.entries(paths)
         .filter(([, targets]) => Array.isArray(targets))
         .map(([pattern, targets]) => {
@@ -133,6 +116,36 @@ function readAliases(file, seen) {
             };
         })
         .sort((a, b) => b.prefix.length - a.prefix.length);
+}
+
+/**
+ * [file] の実際の `paths`（と書いた tsconfig のディレクトリ）と `baseUrl`（書いた tsconfig から解決した絶対パス）。
+ * 後の `extends` ほど、子ほど優先する。
+ */
+function readOptions(file, seen) {
+    let options = {paths: null, pathsDir: null, baseUrl: null};
+    if (seen.has(file) || seen.size > 10) return options;
+    seen.add(file);
+    let json;
+    try {
+        json = parseJsonc(fs.readFileSync(file, "utf8"));
+    } catch {
+        return options;
+    }
+    if (!json || typeof json !== "object") return options;
+    const dir = path.dirname(file);
+
+    for (const parent of [json.extends].flat()) {
+        if (typeof parent !== "string" || !/^\.\.?[\\/]/.test(parent)) continue;
+        const inherited = readOptions(path.resolve(dir, parent.endsWith(".json") ? parent : `${parent}.json`), seen);
+        if (inherited.paths) options = {...options, paths: inherited.paths, pathsDir: inherited.pathsDir};
+        if (inherited.baseUrl) options = {...options, baseUrl: inherited.baseUrl};
+    }
+
+    const {paths, baseUrl} = json.compilerOptions ?? {};
+    if (paths && typeof paths === "object") options = {...options, paths, pathsDir: dir};
+    if (typeof baseUrl === "string") options = {...options, baseUrl: path.resolve(dir, baseUrl)};
+    return options;
 }
 
 /** コメントと末尾のカンマを許す JSON（tsconfig.json）を読む。 */
