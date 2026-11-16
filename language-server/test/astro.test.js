@@ -57,6 +57,12 @@ test("変数参照のカーソルがある階層までのキーを取る", () =>
     assert.strictEqual(variablePathAt(line, 0), null);
 });
 
+test("添字の文字列の不正なエスケープでは失敗せずに null を返す", () => {
+    const line = '{% $user["a\\qb"] %}';
+    assert.strictEqual(variablePathAt(line, line.indexOf("qb")), null);
+    assert.deepStrictEqual(variablePathAt('{% $user["a\\"b"] %}', 12), ["user", 'a"b']);
+});
+
 test("フロントマターのキーの行を探す", () => {
     const text = "---\ntitle: Why\n\"author\": Alice\nnested:\n  author: no\n---\n# body\n";
     assert.deepStrictEqual(frontmatterKeyRange(text, "title"), {

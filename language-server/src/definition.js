@@ -136,12 +136,23 @@ function variablePathAt(text, character) {
         SEGMENT.lastIndex = 0;
         for (let segment; (segment = SEGMENT.exec(match[0]));) {
             const [, name, index, key] = segment;
-            output.push(name ?? (index !== undefined ? Number(index) : JSON.parse(`"${key}"`)));
+            const value = name ?? (index !== undefined ? Number(index) : decodeKey(key));
+            if (value === null) return null;
+            output.push(value);
             if (start + segment.index + segment[0].length >= character) break;
         }
         return output.length ? output : null;
     }
     return null;
+}
+
+/** 添字の文字列の中身（エスケープを含む）。不正なエスケープ（`\q`）があれば `null`。 */
+function decodeKey(key) {
+    try {
+        return JSON.parse(`"${key}"`);
+    } catch {
+        return null;
+    }
 }
 
 /** フロントマターのトップレベルのキー [key] の範囲。見つからなければ `---` の行、フロントマターがなければ `null`。 */
