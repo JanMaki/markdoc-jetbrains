@@ -59,7 +59,10 @@ object MarkdocAstroProject {
         addProperty("ignoreUndefinedVariables", true)
     }
 
-    /** Astro の設定に `ignoreIndentation: true` か `allowHTML: true` があるか（JavaScript なので文字列で探す）。 */
+    /**
+     * Astro の設定で、Markdoc のインテグレーションの呼び出し（`markdoc({ … })`）の引数に
+     * `ignoreIndentation: true` か `allowHTML: true` があるか。
+     */
     private fun allowsIndentation(root: VirtualFile): Boolean {
         val config = ASTRO_CONFIG_NAMES.firstNotNullOfOrNull { root.findChild(it) } ?: return false
         val text = try {
@@ -67,7 +70,75 @@ object MarkdocAstroProject {
         } catch (_: Exception) {
             return false
         }
-        return INDENTATION_OPTION.containsMatchIn(text)
+        return allowsIndentation(text)
+    }
+
+    /**
+     * JavaScript の [text] で、インテグレーションの呼び出しの引数に `ignoreIndentation` か `allowHTML` を
+     * `true` にしたプロパティ（キーは引用符の有無を問わない）があるか。コメントと文字列の中身は見ない。
+     */
+    internal fun allowsIndentation(text: String): Boolean {
+        val name = INTEGRATION_IMPORT.find(stripJavaScript(text, keepStrings = true))?.groupValues?.get(1) ?: "markdoc"
+        val code = stripJavaScript(text, keepStrings = false)
+        val call = Regex("""(?<![\w$.])${Regex.escape(name)}\s*\(""")
+        return call.findAll(code).any { match ->
+            val open = match.range.last
+            INDENTATION_OPTION.containsMatchIn(code.substring(open, closingParen(code, open)))
+        }
+    }
+
+    /** [open] の `(` に対応する `)` の位置。閉じていなければ末尾。文字列とコメントは除いてあるものとする。 */
+    private fun closingParen(code: String, open: Int): Int {
+        var depth = 0
+        for (i in open until code.length) {
+            when (code[i]) {
+                '(', '[', '{' -> depth++
+                ')', ']', '}' -> if (--depth == 0) return i
+            }
+        }
+        return code.length
+    }
+
+    /**
+     * JavaScript の [text] からコメントを除く。[keepStrings] が偽なら文字列を空の `""` にし、
+     * プロパティのキーの文字列（直後に `:` が続く）は引用符を外して中身だけ残す。
+     */
+    private fun stripJavaScript(text: String, keepStrings: Boolean): String {
+        val output = StringBuilder(text.length)
+        var i = 0
+        while (i < text.length) {
+            val c = text[i]
+            when {
+                c == '/' && text.getOrNull(i + 1) == '/' -> while (i < text.length && text[i] != '\n') i++
+                c == '/' && text.getOrNull(i + 1) == '*' -> {
+                    val end = text.indexOf("*/", i + 2)
+                    i = if (end < 0) text.length else end + 2
+                    output.append(' ')
+                }
+
+                c == '"' || c == '\'' || c == '`' -> {
+                    var j = i + 1
+                    while (j < text.length && text[j] != c) j += if (text[j] == '\\') 2 else 1
+                    val end = minOf(j + 1, text.length)
+                    var next = end
+                    while (next < text.length && text[next].isWhitespace()) next++
+                    output.append(
+                        when {
+                            keepStrings -> text.substring(i, end)
+                            c != '`' && text.getOrNull(next) == ':' -> text.substring(i + 1, minOf(j, text.length))
+                            else -> "\"\""
+                        }
+                    )
+                    i = end
+                }
+
+                else -> {
+                    output.append(c)
+                    i++
+                }
+            }
+        }
+        return output.toString()
     }
 
     private fun dependsOnIntegration(root: VirtualFile): Boolean {
@@ -84,5 +155,10 @@ object MarkdocAstroProject {
 
     private val GSON = GsonBuilder().setPrettyPrinting().disableHtmlEscaping().create()
 
-    private val INDENTATION_OPTION = Regex("""\b(ignoreIndentation|allowHTML)\s*:\s*true\b""")
+    /** 値が `true` の `ignoreIndentation`・`allowHTML`（キーの引用符は [stripJavaScript] で外してある）。 */
+    private val INDENTATION_OPTION = Regex("""(?<![\w$.])(ignoreIndentation|allowHTML)\s*:\s*true(?![\w$])""")
+
+    /** `@astrojs/markdoc` の既定のインポートの名前。 */
+    private val INTEGRATION_IMPORT =
+        Regex("""\bimport\s+([A-Za-z_$][\w$]*)\s*(?:,\s*\{[^}]*\}\s*)?from\s*["']@astrojs/markdoc["']""")
 }
