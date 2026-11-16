@@ -18,7 +18,7 @@ object MarkdocPathResolver {
      * 残りが [targets] のどれかのディレクトリからの相対パス。`*` の別名で行き先が複数あれば、[targets] は書いた順に並ぶ。
      * `*` のない別名では [directory] がファイルで、[prefixLength] がパス全体の長さ。
      *
-     * `*` の別名では、パスの最後の要素の末尾の [patternSuffix]（別名の `*` より後）を、ファイル名では行き先ごとの
+     * `*` の別名では、パスの末尾の [patternSuffix]（別名の `*` より後。`/` を含みうる）を、ファイルでは行き先ごとの
      * [Target.suffix]（行き先の `*` より後）に読み替える（行き先が `src/partials/` に `*.mdoc` を続けたものなら、`a` は `a.mdoc`）。
      */
     data class Base(val targets: List<Target>, val prefixLength: Int = 0, val patternSuffix: String = "") {
@@ -27,9 +27,15 @@ object MarkdocPathResolver {
         /** 最初の基準。 */
         val directory: VirtualFile get() = targets.first().directory
 
-        /** パスの最後の要素 [name] が [target] で指すファイル名。別名の `*` より後が合わなければ `null`。 */
-        fun fileName(target: Target, name: String): String? =
-            if (name.endsWith(patternSuffix)) name.removeSuffix(patternSuffix) + target.suffix else null
+        /** パス全体 [path] が [target] で指すファイルのパス。別名の `*` より後が合わなければ `null`。 */
+        fun filePath(target: Target, path: String): String? =
+            if (path.endsWith(patternSuffix)) path.removeSuffix(patternSuffix) + target.suffix else null
+
+        /** [path] のうち、ファイル名に読み替える最後の要素の先頭（[patternSuffix] を除いた残りの最後の要素）。 */
+        fun fileNameStart(path: String): Int {
+            val stemEnd = if (path.endsWith(patternSuffix)) path.length - patternSuffix.length else path.length
+            return path.lastIndexOf('/', stemEnd - 1) + 1
+        }
 
         /** [target] のファイル名 [name] を、パスの最後の要素として書く名前。行き先の `*` より後が合わなければ `null`。 */
         fun pathName(target: Target, name: String): String? =
@@ -65,24 +71,24 @@ object MarkdocPathResolver {
         val local = offset - value.start - base.prefixLength
         if (local < 0) return null
         val text = value.text.substring(base.prefixLength)
-        val segmentEnd = text.indexOf('/', local).takeIf { it >= 0 } ?: text.length
+        // ファイル名の要素（`*` の別名の `/` を含む末尾を合わせたもの）の上なら、パス全体をファイルとして探す
+        val last = local >= base.fileNameStart(text)
+        val segmentEnd = if (last) text.length else text.indexOf('/', local).takeIf { it >= 0 } ?: text.length
         val path = text.substring(0, segmentEnd).trim('/')
         if (path.isEmpty()) return null
         // 行き先が複数あれば、パス全体があるものを選ぶ（なければ区切りまでのパスがある最初のもの）
-        val last = segmentEnd == text.length
         val target = base.targets.firstOrNull { find(base, it, text.trim('/'), last = true) != null }
         return target?.let { find(base, it, path, last) }
             ?: base.targets.firstNotNullOfOrNull { find(base, it, path, last) }
     }
 
     /**
-     * [target] のディレクトリからの [path]。[last] ならパスの最後の要素をファイル名に読み替えて探し、
-     * 読み替えたファイルがなければ書いたとおりの名前で探す。
+     * [target] のディレクトリからの [path]。[last] ならパス全体をファイルのパスに読み替えて探し、
+     * 読み替えたファイルがなければ書いたとおりのパスで探す。
      */
     private fun find(base: Base, target: Target, path: String, last: Boolean): VirtualFile? {
         if (last) {
-            val name = path.substringAfterLast('/')
-            val mapped = base.fileName(target, name)?.let { path.removeSuffix(name) + it }
+            val mapped = base.filePath(target, path)
             if (mapped != null && mapped != path) target.directory.findFileByRelativePath(mapped)?.let { return it }
         }
         return target.directory.findFileByRelativePath(path)
