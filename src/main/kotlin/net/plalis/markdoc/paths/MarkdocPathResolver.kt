@@ -100,13 +100,14 @@ object MarkdocPathResolver {
     /**
      * [text] に一致する tsconfig の別名の行き先。`*` 付きなら、行き先の `*` がファイル名の位置にあるもの（`src/partials/` に
      * `*` か `*.mdoc` を続けたもの）のうち存在するすべてのディレクトリ（ファイルは [resolveAt] と補完がそれぞれの行き先で探す）。
-     * そうした行き先がなければ、それ以外の `*` 付きの行き先のうち存在する最初のファイル。`*` なしなら存在する最初の行き先のファイル。
+     * ただし、それ以外の `*` 付きの行き先のファイルが存在し、それより先の行き先にパス全体のファイルがなければそのファイル。
+     * `*` なしなら存在する最初の行き先のファイル。
      */
     private fun aliasBase(root: VirtualFile, text: String): Base? {
         for (alias in MarkdocTsconfigAliases.read(root)) {
             if (alias.wildcard && text.startsWith(alias.prefix)) {
                 val targets = ArrayList<Target>()
-                var file: VirtualFile? = null
+                val rest = text.substring(alias.prefix.length).trim('/')
                 for (target in alias.targets) {
                     val star = target.indexOf('*')
                     val head = if (star < 0) target else target.substring(0, star)
@@ -115,17 +116,19 @@ object MarkdocPathResolver {
                         val path = head.trimEnd('/')
                         val directory = if (path.isEmpty()) alias.base else alias.base.findFileByRelativePath(path)
                         if (directory?.isDirectory == true) targets += Target(directory, tail)
-                    } else if (file == null && text.length >= alias.prefix.length + alias.suffix.length &&
-                        text.endsWith(alias.suffix)
-                    ) {
+                    } else if (text.length >= alias.prefix.length + alias.suffix.length && text.endsWith(alias.suffix)) {
                         // `*` が行き先のディレクトリの位置にあれば（`src/*/index.mdoc`）、パス全体をファイルに読み替える
                         val captured = text.substring(alias.prefix.length, text.length - alias.suffix.length)
-                        file = alias.base.findFileByRelativePath(head + (if (star < 0) "" else captured) + tail)
-                            ?.takeIf { !it.isDirectory }
+                        val file = alias.base.findFileByRelativePath(head + (if (star < 0) "" else captured) + tail)
+                            ?.takeIf { !it.isDirectory } ?: continue
+                        // 先の行き先にパス全体のファイルがなければ、この行き先のファイルを選ぶ
+                        val earlier = Base(targets, alias.prefix.length, alias.suffix)
+                        if (targets.none { find(earlier, it, rest, last = true)?.isDirectory == false }) {
+                            return Base(file, text.length)
+                        }
                     }
                 }
                 if (targets.isNotEmpty()) return Base(targets, alias.prefix.length, alias.suffix)
-                if (file != null) return Base(file, text.length)
             } else if (!alias.wildcard && text == alias.prefix) {
                 val file = alias.targets.firstNotNullOfOrNull { target ->
                     alias.base.findFileByRelativePath(target)?.takeIf { !it.isDirectory }
