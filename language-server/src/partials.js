@@ -44,7 +44,10 @@ class PartialResolver {
     }
 }
 
-/** tsconfig.json の `compilerOptions.paths` の別名。更新時刻が変わったときだけ読み直す。 */
+/**
+ * tsconfig.json の `compilerOptions.paths` の別名。`extends` で読んだファイルを含め、
+ * どれかの更新時刻が変わったときだけ読み直す。
+ */
 class TsconfigAliases {
     constructor(root) {
         this.root = root;
@@ -70,14 +73,24 @@ class TsconfigAliases {
     load() {
         if (!this.root) return [];
         const file = path.join(this.root, "tsconfig.json");
-        let mtime;
-        try {
-            mtime = fs.statSync(file).mtimeMs;
-        } catch {
-            return [];
+        if (mtimeOf(file) === null) return [];
+        const fresh = this.cache && [...this.cache.mtimes].every(([dependency, mtime]) => mtimeOf(dependency) === mtime);
+        if (!fresh) {
+            const seen = new Set();
+            const entries = readAliases(file, seen);
+            // 読んだ（読もうとした）ファイルの更新時刻。読んだ後に変わっていれば次回読み直す
+            this.cache = {entries, mtimes: new Map([...seen].map((dependency) => [dependency, mtimeOf(dependency)]))};
         }
-        if (this.cache?.mtime !== mtime) this.cache = {mtime, entries: readAliases(file, new Set())};
         return this.cache.entries;
+    }
+}
+
+/** [file] の更新時刻。なければ `null`。 */
+function mtimeOf(file) {
+    try {
+        return fs.statSync(file).mtimeMs;
+    } catch {
+        return null;
     }
 }
 
@@ -187,7 +200,8 @@ function isFileInside(root, target) {
     if (!root || target === root || !isInside(root, target)) return false;
     try {
         const realRoot = fs.realpathSync(root);
-        const pending = path.relative(root, target).split(/[\\/]+/).filter(Boolean);
+        // ネイティブの区切りで分ける（POSIX ではファイル名のバックスラッシュも名前の一部として扱う）
+        const pending = path.relative(root, target).split(path.sep).filter(Boolean);
         let current = realRoot;
         let hops = 0;
         while (pending.length) {

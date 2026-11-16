@@ -4,7 +4,7 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const {pathToFileURL} = require("node:url");
-const {PartialResolver, parseJsonc} = require("../src/partials");
+const {PartialResolver, parseJsonc, isFileInside} = require("../src/partials");
 
 /** 一時ディレクトリに [files]（パス → 中身）を作り、そのディレクトリの実パスを返す。 */
 function project(files) {
@@ -81,6 +81,25 @@ test("relative：tsconfig.json の paths の別名で解決する", () => {
     assert.strictEqual(r.resolve("@partials/missing.mdoc", from), null);
 });
 
+test("relative：extends した tsconfig を編集すると別名を読み直す", () => {
+    const root = project({
+        "src/content/post.mdoc": "",
+        "src/a/shared.mdoc": "",
+        "src/b/shared.mdoc": "",
+        "tsconfig.json": `{"extends": "./tsconfig.base.json"}`,
+        "tsconfig.base.json": `{"compilerOptions": {"paths": {"@p/*": ["src/a/*"]}}}`,
+    });
+    const r = resolver(root, "src/content", {partialPaths: "relative"});
+    const from = uri(root, "src/content/post.mdoc");
+    assert.strictEqual(r.resolve("@p/shared.mdoc", from), path.join(root, "src/a/shared.mdoc"));
+
+    const base = path.join(root, "tsconfig.base.json");
+    fs.writeFileSync(base, `{"compilerOptions": {"paths": {"@p/*": ["src/b/*"]}}}`);
+    const later = new Date(Date.now() + 10_000);
+    fs.utimesSync(base, later, later);
+    assert.strictEqual(r.resolve("@p/shared.mdoc", from), path.join(root, "src/b/shared.mdoc"));
+});
+
 test("UNC パスと絶対パスは扱わない", () => {
     const root = project(ASTRO);
     for (const options of [{}, {partialPaths: "relative"}]) {
@@ -99,6 +118,15 @@ test("シンボリックリンクで境界の外へ出るファイルは読ま�
     fs.symlinkSync(path.join(root, "outside.mdoc"), path.join(root, "src/content/blog/_link.mdoc"));
     const r = resolver(root, "src/content");
     assert.strictEqual(r.resolve("blog/_link.mdoc", uri(root, "src/content/blog/post.mdoc")), null);
+});
+
+test("POSIX ではファイル名のバックスラッシュで区切らず、そのファイル自体を確かめる", {skip: process.platform === "win32"}, () => {
+    const root = project({"x/y.mdoc": ""});
+    const outside = project({"secret.mdoc": ""});
+    // `x\y.mdoc` という名前のリンクが外を指す。`x/y.mdoc` を確かめて通してはいけない
+    fs.symlinkSync(path.join(outside, "secret.mdoc"), path.join(root, "x\\y.mdoc"));
+    assert.strictEqual(isFileInside(root, path.join(root, "x\\y.mdoc")), false);
+    assert.strictEqual(isFileInside(root, path.join(root, "x/y.mdoc")), true);
 });
 
 test("tsconfig のコメントと末尾のカンマを読める", () => {
