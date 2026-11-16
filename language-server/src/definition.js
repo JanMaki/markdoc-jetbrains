@@ -160,19 +160,98 @@ function frontmatterKeyRange(text, key) {
     return start;
 }
 
-/** [source] で `variables` の後に [keys]（`name:`、`"name":`）を順に探し、最後のキーの位置を返す。なければ -1。 */
+/**
+ * [source] で `variables` のオブジェクトから [keys]（`name:`、`"name":`）を順にたどり、最後のキーの位置を返す。
+ * 各キーは、1 つ前のキーの値のオブジェクトの直下のプロパティからだけ探す（入れ子の同名のキーは選ばない）。なければ -1。
+ */
 function findKeyPath(source, keys) {
-    let offset = source.search(/\bvariables\s*:/);
-    if (offset < 0) return -1;
+    const variables = /\bvariables\s*:/.exec(source);
+    if (!variables) return -1;
+    let value = variables.index + variables[0].length;
+    let found = -1;
     for (const key of keys) {
-        const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-        const pattern = new RegExp(`(?:^|[\\s{,])(["']?)${escaped}\\1\\s*:`, "g");
-        pattern.lastIndex = offset;
-        const match = pattern.exec(source);
-        if (!match) return -1;
-        offset = match.index + match[0].lastIndexOf(key);
+        const open = skipTrivia(source, value);
+        if (source[open] !== "{") return -1;
+        const property = directProperty(source, open, key);
+        if (!property) return -1;
+        found = property.offset;
+        value = property.value;
     }
-    return offset;
+    return found;
+}
+
+/**
+ * [open] の `{` から始まるオブジェクトの直下のプロパティ [key] の、キーの位置と値の先頭（`:` の直後）。
+ * 文字列、テンプレート文字列、コメントの中と、入れ子の括弧の中は読み飛ばす。なければ `null`。
+ */
+function directProperty(source, open, key) {
+    let depth = 0;
+    let expectKey = true;
+    let i = open + 1;
+    while (i < source.length) {
+        const char = source[i];
+        if (/\s/.test(char)) {
+            i++;
+        } else if (char === "/" && (source[i + 1] === "/" || source[i + 1] === "*")) {
+            i = skipTrivia(source, i);
+        } else if (depth === 0 && expectKey && (/[A-Za-z_$]/.test(char) || char === '"' || char === "'")) {
+            expectKey = false;
+            let name;
+            let end;
+            let offset = i;
+            if (char === '"' || char === "'") {
+                end = skipString(source, i);
+                name = source.slice(i + 1, end - 1);
+                offset = i + 1;
+            } else {
+                end = i;
+                while (end < source.length && /[\w$]/.test(source[end])) end++;
+                name = source.slice(i, end);
+            }
+            const colon = skipTrivia(source, end);
+            if (source[colon] === ":" && name === key) return {offset, value: colon + 1};
+            i = end;
+        } else if (char === '"' || char === "'" || char === "`") {
+            i = skipString(source, i);
+        } else if (char === "{" || char === "[" || char === "(") {
+            depth++;
+            i++;
+        } else if (char === "}" || char === "]" || char === ")") {
+            if (--depth < 0) return null;
+            i++;
+        } else {
+            if (depth === 0 && char === ",") expectKey = true;
+            i++;
+        }
+    }
+    return null;
+}
+
+/** [from] から空白とコメントを読み飛ばした位置。 */
+function skipTrivia(source, from) {
+    let i = from;
+    while (i < source.length) {
+        if (/\s/.test(source[i])) {
+            i++;
+        } else if (source.startsWith("//", i)) {
+            const end = source.indexOf("\n", i);
+            i = end < 0 ? source.length : end + 1;
+        } else if (source.startsWith("/*", i)) {
+            const end = source.indexOf("*/", i + 2);
+            i = end < 0 ? source.length : end + 2;
+        } else {
+            break;
+        }
+    }
+    return i;
+}
+
+/** [open] の引用符から始まる文字列の直後の位置。閉じていなければ末尾。 */
+function skipString(source, open) {
+    const quote = source[open];
+    let i = open + 1;
+    while (i < source.length && source[i] !== quote) i += source[i] === "\\" ? 2 : 1;
+    return Math.min(i + 1, source.length);
 }
 
 /** 文字の位置を LSP の行と列にする。 */
