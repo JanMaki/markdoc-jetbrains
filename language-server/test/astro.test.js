@@ -97,6 +97,14 @@ test("スキーマのキーは親のオブジェクトの直下のプロパテ�
     assert.strictEqual(findKeyPath(source, ["a", "d"]), -1);
 });
 
+test("引用符付きのキーのエスケープを戻してから比べる", () => {
+    const source = "export default {\n  variables: {\n    user: {\"a\\\"b\": 1, 'c\\'d': 2},\n  },\n};\n";
+    const keys = variablePathAt('{% $user["a\\"b"] %}', 12);
+    assert.deepStrictEqual(keys, ["user", 'a"b']);
+    assert.strictEqual(findKeyPath(source, keys), source.indexOf('a\\"b'));
+    assert.strictEqual(findKeyPath(source, ["user", "c'd"]), source.indexOf("c\\'d"));
+});
+
 test("正規表現リテラルの中の括弧と引用符を読み飛ばす", () => {
     const source = "export default {\n  variables: {\n    pattern: /[}\\]\"]+/g,\n    after: 1,\n    ratio: 4 / 2 / 1,\n    last: 2,\n  },\n};\n";
     assert.strictEqual(findKeyPath(source, ["after"]), source.indexOf("after"));

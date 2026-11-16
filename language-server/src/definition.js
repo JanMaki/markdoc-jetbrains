@@ -212,7 +212,7 @@ function directProperty(source, open, key) {
             let offset = i;
             if (char === '"' || char === "'") {
                 end = skipString(source, i);
-                name = source.slice(i + 1, end - 1);
+                name = decodeString(source.slice(i + 1, end - 1));
                 offset = i + 1;
             } else {
                 end = i;
@@ -310,6 +310,16 @@ function skipRegex(source, open) {
         i++;
     }
     return -1;
+}
+
+/** JavaScript の文字列リテラルの中身 [body] のエスケープを戻す。 */
+function decodeString(body) {
+    const simple = {n: "\n", t: "\t", r: "\r", b: "\b", f: "\f", v: "\v", 0: "\0"};
+    return body.replace(/\\(u\{[0-9A-Fa-f]+\}|u[0-9A-Fa-f]{4}|x[0-9A-Fa-f]{2}|\r\n|[\s\S])/g, (_, escape) => {
+        if (escape.length > 2) return String.fromCodePoint(parseInt(escape.replace(/[ux{}]/g, ""), 16));
+        if (/^(\r\n|[\r\n\u2028\u2029])$/.test(escape)) return "";
+        return simple[escape] ?? escape;
+    });
 }
 
 /** 文字の位置を LSP の行と列にする。 */
