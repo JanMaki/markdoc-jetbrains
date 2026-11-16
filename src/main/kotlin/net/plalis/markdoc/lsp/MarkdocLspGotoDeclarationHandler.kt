@@ -31,8 +31,9 @@ class MarkdocLspGotoDeclarationHandler : GotoDeclarationHandler {
         val project = psiFile.project
         val document = editor.document
         val text = document.charsSequence
-        if (!MarkdocTagScanner.isInTagAt(text, offset, MarkdocConfigReader.allowComments(project))) return null
-        if (MarkdocPathValue.at(text, offset) != null) return null
+        val allowComments = MarkdocConfigReader.allowComments(project)
+        if (!MarkdocTagScanner.isInTagAt(text, offset, allowComments)) return null
+        if (MarkdocPathValue.at(text, offset, allowComments) != null) return null
 
         val client = LspClientManager.getInstance(project).getClients(MarkdocLspIntegrationProvider::class.java)
             .firstOrNull { it.state == LspServerState.Running } ?: return null

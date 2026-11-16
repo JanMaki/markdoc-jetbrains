@@ -7,6 +7,7 @@ import com.intellij.codeInsight.completion.CompletionResultSet
 import com.intellij.codeInsight.lookup.LookupElementBuilder
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.util.PlatformIcons
+import net.plalis.markdoc.MarkdocConfigReader
 import net.plalis.markdoc.MarkdocFiles
 import net.plalis.markdoc.MarkdocTagScanner
 
@@ -27,7 +28,7 @@ class MarkdocPathCompletionContributor : CompletionContributor() {
         val offset = parameters.offset
         val text = parameters.editor.document.charsSequence
         if (MarkdocTagScanner.isInCode(text, offset)) return
-        val value = MarkdocPathValue.at(text, offset) ?: return
+        val value = MarkdocPathValue.at(text, offset, MarkdocConfigReader.allowComments(psiFile.project)) ?: return
         val base = MarkdocPathResolver.base(psiFile.project, file, value) ?: return
         // 別名（`@partials/`）の後ろだけをパスとして読む
         val typedEnd = offset - value.start

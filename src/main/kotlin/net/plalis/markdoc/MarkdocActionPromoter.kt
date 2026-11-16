@@ -21,8 +21,11 @@ class MarkdocActionPromoter : ActionPromoter {
         val offset = editor.caretModel.offset
         val allowComments = MarkdocConfigReader.allowComments(project)
         // isInTagAt はフェンスの中を除くので、処理するフェンス（`process=false` なし）の中のタグのパスは別に確かめる。
-        // MarkdocPathValue.at はタグの中のパスだけを返し、インラインコードと `process=false` のフェンスの中は除く
-        if (!MarkdocTagScanner.isInTagAt(text, offset, allowComments) && MarkdocPathValue.at(text, offset) == null) {
+        // MarkdocPathValue.at はタグの中のパスだけを返し、インラインコード、`process=false` のフェンス、
+        // allowComments のときのコメントの中は除く
+        if (!MarkdocTagScanner.isInTagAt(text, offset, allowComments) &&
+            MarkdocPathValue.at(text, offset, allowComments) == null
+        ) {
             return emptyList()
         }
         val manager = ActionManager.getInstance()
