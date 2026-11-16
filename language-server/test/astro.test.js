@@ -116,6 +116,13 @@ test("正規表現リテラルの中の括弧と引用符を読み飛ばす", ()
     assert.strictEqual(findKeyPath(source, ["last"]), source.indexOf("last"));
 });
 
+test("文字列リテラルの後の / は除算として読む", () => {
+    const source = "export default {\n  variables: {\n    ratio: \"6\" / 2, after: 1, b: `4` / 2,\n    c: /a/g,\n    last: 2,\n  },\n};\n";
+    assert.strictEqual(findKeyPath(source, ["after"]), source.indexOf("after"));
+    assert.strictEqual(findKeyPath(source, ["b"]), source.indexOf("b: `"));
+    assert.strictEqual(findKeyPath(source, ["last"]), source.indexOf("last"));
+});
+
 test("定義ジャンプはスキーマの変数の直下のプロパティへ移動する", () => {
     const {MarkdocDefinitionProvider} = require("../src/definition");
     const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "markdoc-definition-")));

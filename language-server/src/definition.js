@@ -310,7 +310,8 @@ function regexAllowed(source, i) {
     let j = i - 1;
     while (j >= 0 && /\s/.test(source[j])) j--;
     if (j < 0) return true;
-    if (/[)\]}]/.test(source[j])) return false;
+    // 括弧、文字列リテラル、テンプレート文字列の終わりの後は除算
+    if (/[)\]}"'`]/.test(source[j])) return false;
     if (!/[\w$]/.test(source[j])) return true;
     let start = j;
     while (start > 0 && /[\w$]/.test(source[start - 1])) start--;
