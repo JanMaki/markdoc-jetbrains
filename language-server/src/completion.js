@@ -1,5 +1,5 @@
 const {Plugins} = require("@markdoc/language-server");
-const {frontmatterOf, withMarkdocVariables} = require("./variables");
+const {frontmatterOf, frontmatterVariableName, withMarkdocVariables} = require("./variables");
 
 /** LSP の CompletionItemKind（vscode-languageserver の値と同じ）。 */
 const CompletionItemKind = {Function: 3, Variable: 6, Property: 10, Value: 12, EnumMember: 20};
@@ -286,22 +286,26 @@ class MarkdocCompletionProvider extends Plugins.CompletionProvider {
      * `$a.` のように階層を入力した後では、その値が持つキーを出す。
      *
      * 候補は `textEdit` で入力中の名前だけを置き換える。クライアントが補完の接頭辞を単語の区切りで決めると、
-     * `$` や `.` を含めるかどうかが定まらないため。
+     * `$` や `.` を含めるかどうかが定まらないため。`{%$` のように `{%` の直後なら、`$` から置き換えて空白を補う。
      *
      * @param written 入力済みの階層（`a.b[0].`。`$` の直後なら空）。
      * @param typed 入力中の名前。
      */
     completeVariables(params, [, written, typed]) {
         const frontmatter = frontmatterOf(this.services.Documents.ast(params.textDocument.uri), this.services.Scanner);
-        const root = withMarkdocVariables(this.schema(params)?.variables, frontmatter);
+        const root = withMarkdocVariables(this.schema(params)?.variables, frontmatter, this.config);
         const {line, character} = params.position;
-        const range = {start: {line, character: character - typed.length}, end: {line, character}};
+        const dollar = character - typed.length - written.length - 1;
+        const leading = this.lineText(params).slice(0, dollar).endsWith("{%");
+        const range = leading
+            ? {start: {line, character: dollar}, end: {line, character}}
+            : {start: {line, character: character - typed.length}, end: {line, character}};
         const item = (label, value) => ({
             label,
             kind: CompletionItemKind.Variable,
             detail: valueType(value),
-            filterText: label,
-            textEdit: {range, newText: label},
+            filterText: leading ? `$${written}${label}` : label,
+            textEdit: {range, newText: leading ? ` $${written}${label}` : label},
         });
 
         const path = Array.from(written.matchAll(PATH_SEGMENT), ([, name, index, key]) =>
@@ -309,11 +313,14 @@ class MarkdocCompletionProvider extends Plugins.CompletionProvider {
         );
         if (path.length > 0) return childItems(lookup(root, path), item);
 
-        // フロントマターのキーは `markdoc.frontmatter.title` の形でも直接出す（設定の変数の後に並べる）
-        const frontmatterItems = childItems(frontmatter, (key, value) => ({
-            ...item(`markdoc.frontmatter.${key}`, value),
+        // フロントマターのキーは `markdoc.frontmatter.title`（と `frontmatter.title`）の形でも直接出す
+        const prefixes = ["markdoc.frontmatter"];
+        const name = frontmatterVariableName(this.config);
+        if (name && root[name] === frontmatter) prefixes.unshift(name);
+        const frontmatterItems = prefixes.flatMap((prefix) => childItems(frontmatter, (key, value) => ({
+            ...item(`${prefix}.${key}`, value),
             sortText: `1${key}`,
-        }));
+        })));
         return [...childItems(root, item), ...frontmatterItems];
     }
 
@@ -462,4 +469,4 @@ function isStringAttribute(attribute) {
     return !types.every((type) => NON_STRING_TYPES.includes(type));
 }
 
-module.exports = {MarkdocCompletionProvider, ANNOTATION_PATTERN};
+module.exports = {MarkdocCompletionProvider, ANNOTATION_PATTERN, VARIABLE_PATTERN};

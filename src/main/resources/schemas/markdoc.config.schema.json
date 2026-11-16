@@ -40,6 +40,23 @@
         "markdoc": {
           "$ref": "#/definitions/markdoc"
         },
+        "partialPaths": {
+          "enum": [
+            "content",
+            "relative"
+          ],
+          "default": "content",
+          "description": "How the file attribute of {% partial %} is resolved (specific to this plugin). \"content\" (default): relative to the content directory (path), as in the upstream language server. \"relative\": as in Astro (@astrojs/markdoc): ./ and ../ from the file that contains the tag, / from the project root, aliases from compilerOptions.paths in tsconfig.json, and other paths from the file that contains the tag."
+        },
+        "frontmatterVariable": {
+          "type": "string",
+          "description": "Name of a variable that holds the frontmatter of the document, in addition to $markdoc.frontmatter (specific to this plugin). Astro passes it as <Content frontmatter={entry.data} />, so use \"frontmatter\" there."
+        },
+        "ignoreUndefinedVariables": {
+          "type": "boolean",
+          "default": false,
+          "description": "Do not report \"Undefined variable\" (specific to this plugin). Useful when variables are passed at render time, as with Astro's <Content /> props. Astro also ignores this error when it builds."
+        },
         "server": {
           "type": "object",
           "description": "Custom language server for the Visual Studio Code extension. Ignored by this plugin.",

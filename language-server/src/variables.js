@@ -2,6 +2,7 @@
  * 補完（completion.js）と検証（validation.js）で共有する、文書から参照できる変数の組み立て。
  *
  * Markdoc の文書は、設定の `variables` に加えて、組み込みの `$markdoc.frontmatter` で自身のフロントマターを参照できる。
+ * 設定の `frontmatterVariable`（Astro では `"frontmatter"`）があれば、その変数もフロントマターを指す。
  */
 
 /**
@@ -33,10 +34,22 @@ function frontmatterOf(ast, Scanner) {
 /**
  * 設定の `variables` に、組み込みの `markdoc.frontmatter` を加えたオブジェクト（元のオブジェクトは変えない）。
  * 設定に `markdoc` という変数があれば、その中身は残して `frontmatter` だけを上書きする。
+ * [config] の `frontmatterVariable` の変数にもフロントマターを入れる（スキーマに同じ名前があればそちらを優先）。
  */
-function withMarkdocVariables(variables, frontmatter) {
+function withMarkdocVariables(variables, frontmatter, config) {
     const base = variables && typeof variables === "object" ? variables : {};
-    return {...base, markdoc: {...base.markdoc, frontmatter}};
+    const output = {...base, markdoc: {...base.markdoc, frontmatter}};
+    const name = frontmatterVariableName(config);
+    if (name && !(name in base)) output[name] = frontmatter;
+    return output;
 }
 
-module.exports = {frontmatterOf, withMarkdocVariables};
+/** 設定の `frontmatterVariable`（先頭の `$` は省く）。なければ `null`。 */
+function frontmatterVariableName(config) {
+    const name = config?.frontmatterVariable;
+    if (typeof name !== "string") return null;
+    const trimmed = name.trim().replace(/^\$/, "");
+    return trimmed && trimmed !== "markdoc" ? trimmed : null;
+}
+
+module.exports = {frontmatterOf, frontmatterVariableName, withMarkdocVariables};

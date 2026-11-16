@@ -1,0 +1,13 @@
+---
+title: Indented tags
+---
+
+# {% $frontmatter.title %}
+
+astro.config.mjs で ignoreIndentation を有効にしているので、入れ子のタグを字下げして書ける。
+
+{% aside type="note" title="Outer" %}
+    {% aside type="tip" title="Inner" %}
+        Indented content is not a code block.
+    {% /aside %}
+{% /aside %}

@@ -1,7 +1,5 @@
 package net.plalis.markdoc.paths
 
-import net.plalis.markdoc.MarkdocFiles
-import net.plalis.markdoc.MarkdocTagScanner
 import com.intellij.codeInsight.AutoPopupController
 import com.intellij.codeInsight.completion.CompletionContributor
 import com.intellij.codeInsight.completion.CompletionParameters
@@ -9,13 +7,15 @@ import com.intellij.codeInsight.completion.CompletionResultSet
 import com.intellij.codeInsight.lookup.LookupElementBuilder
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.util.PlatformIcons
+import net.plalis.markdoc.MarkdocFiles
+import net.plalis.markdoc.MarkdocTagScanner
 
 /**
  * 属性値のファイルパスを補完する。
  *
  * 最後の `/` より後ろを入力中の名前とみなし、その手前のパスが指すディレクトリの中身を候補に出す。
  * ディレクトリを選ぶと `/` を付けて、続けて中身の候補を出す。
- * `partial` の `file` では Markdoc ファイルとディレクトリだけを出す。
+ * `partial` の `file` では Markdoc ファイルとディレクトリだけを出す。基準は [MarkdocPathResolver] が決める。
  */
 class MarkdocPathCompletionContributor : CompletionContributor() {
     /** カーソルがファイルパスの属性値の中にあれば、入力済みのディレクトリにあるファイルとディレクトリを候補に出す。 */
@@ -28,13 +28,18 @@ class MarkdocPathCompletionContributor : CompletionContributor() {
         val text = parameters.editor.document.charsSequence
         if (MarkdocTagScanner.isInCode(text, offset)) return
         val value = MarkdocPathValue.at(text, offset) ?: return
-        val typed = value.text.substring(0, offset - value.start)
+        val base = MarkdocPathResolver.base(psiFile.project, file, value) ?: return
+        // 別名（`@partials/`）の後ろだけをパスとして読む
+        val typedEnd = offset - value.start
+        if (typedEnd < base.prefixLength) return
+        val typed = value.text.substring(base.prefixLength, typedEnd)
         val slash = typed.lastIndexOf('/')
         val prefix = typed.substring(slash + 1)
 
-        val base = MarkdocPathResolver.baseDirectory(psiFile.project, file, value) ?: return
         val directoryPath = typed.substring(0, slash + 1).trim('/')
-        val directory = if (directoryPath.isEmpty()) base else base.findFileByRelativePath(directoryPath) ?: return
+        val directory =
+            if (directoryPath.isEmpty()) base.directory else base.directory.findFileByRelativePath(directoryPath)
+                ?: return
         if (!directory.isDirectory) return
 
         val paths = result.withPrefixMatcher(prefix)

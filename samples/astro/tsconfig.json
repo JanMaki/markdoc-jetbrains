@@ -1,5 +1,18 @@
 {
   "extends": "astro/tsconfigs/strict",
-  "include": [".astro/types.d.ts", "**/*"],
-  "exclude": ["dist"]
+  "include": [
+    ".astro/types.d.ts",
+    "**/*"
+  ],
+  "exclude": [
+    "dist"
+  ],
+  "compilerOptions": {
+    // partial の file にも使える別名（Astro は tsconfig の paths を読む）
+    "paths": {
+      "@partials/*": [
+        "./src/partials/*"
+      ]
+    }
+  }
 }

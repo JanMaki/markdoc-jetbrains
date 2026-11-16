@@ -1,12 +1,19 @@
 [
   {
-    "id": "astro-sample",
+    "id": "astro",
     "path": "src/content",
     "schema": {
       "path": "markdoc.config.mjs",
       "type": "esm",
       "property": "default",
       "watch": true
-    }
+    },
+    "markdoc": {
+      "allowComments": true,
+      "allowIndentation": true
+    },
+    "partialPaths": "relative",
+    "frontmatterVariable": "frontmatter",
+    "ignoreUndefinedVariables": true
   }
 ]

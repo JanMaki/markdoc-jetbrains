@@ -2,5 +2,7 @@
     <extensions defaultExtensionNs="com.intellij">
         <platform.lsp.integrationProvider
                 implementation="net.plalis.markdoc.lsp.MarkdocLspIntegrationProvider"/>
+        <!-- 見出しの中のタグでも言語サーバーの定義ジャンプを使うため、Markdown の宣言より先に問い合わせる -->
+        <gotoDeclarationHandler implementation="net.plalis.markdoc.lsp.MarkdocLspGotoDeclarationHandler" order="first"/>
     </extensions>
 </idea-plugin>

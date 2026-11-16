@@ -1,6 +1,5 @@
 package net.plalis.markdoc
 
-import net.plalis.markdoc.settings.MarkdocSettings
 import com.intellij.openapi.application.runWriteAction
 import com.intellij.openapi.options.ConfigurationException
 import com.intellij.openapi.project.Project
@@ -9,6 +8,8 @@ import com.intellij.openapi.util.io.FileUtil
 import com.intellij.openapi.vfs.VFileProperty
 import com.intellij.openapi.vfs.VfsUtil
 import com.intellij.openapi.vfs.VirtualFile
+import net.plalis.markdoc.config.MarkdocAstroProject
+import net.plalis.markdoc.settings.MarkdocSettings
 import java.io.IOException
 import java.nio.file.InvalidPathException
 import java.nio.file.Path
@@ -46,8 +47,14 @@ object MarkdocConfigFile {
         ]
     """.trimIndent() + "\n"
 
+    /** 設定ファイルを作るときの中身。Astro のプロジェクトなら Astro 向けの雛形。 */
+    fun templateText(project: Project): String {
+        val root = project.guessProjectDir() ?: return TEMPLATE_TEXT
+        return if (MarkdocAstroProject.isAstro(root)) MarkdocAstroProject.templateText(root) else TEMPLATE_TEXT
+    }
+
     /**
-     * プロジェクトルートからの [relativePath]（既定は設定のパス）に、[TEMPLATE_TEXT] の中身で設定ファイルを作る。
+     * プロジェクトルートからの [relativePath]（既定は設定のパス）に、[templateText] の中身で設定ファイルを作る。
      *
      * @return 作ったファイル。
      * @throws ConfigurationException 絶対パスやルートの外を指す場合、すでにファイルがある場合、書き込みに失敗した場合。
@@ -61,7 +68,7 @@ object MarkdocConfigFile {
             throw ConfigurationException("$path already exists.", "Config File Already Exists")
         }
         try {
-            return write(root, path, TEMPLATE_TEXT)
+            return write(root, path, templateText(project))
         } catch (e: IOException) {
             throw ConfigurationException("Failed to write $path: ${e.message}", "Cannot Create Config File")
         }
