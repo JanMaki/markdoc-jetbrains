@@ -63,6 +63,13 @@ test("directory：指定したディレクトリから解決し、境界はプ�
     assert.strictEqual(r.resolve("missing.md", from), null);
 });
 
+test("directory：先頭の / はプロジェクトルートからのパスとして読む", () => {
+    const root = path.resolve("/work/site");
+    const r = createPartialRule({root, path: "", partialPaths: {directory: "/markdoc/partials"}}, {path: root});
+    assert.strictEqual(r.directory, path.join(root, "markdoc/partials"));
+    assert.strictEqual(r.boundary(), root);
+});
+
 const uri = (root, file) => pathToFileURL(path.join(root, file)).href;
 
 const ASTRO = {

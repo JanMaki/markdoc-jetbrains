@@ -107,8 +107,10 @@ class DirectoryPartialRule extends PartialRule {
      */
     constructor(config, Scanner) {
         super(config, Scanner);
+        // Kotlin 側の findUnder と同じく、区切りを `/` にそろえて前後の `/` を除き、POSIX でもプロジェクトルートからのパスにする
+        const relative = config.partialPaths.directory.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
         /** partial を探すディレクトリの絶対パス。 */
-        this.directory = path.resolve(config.root, config.partialPaths.directory);
+        this.directory = path.resolve(config.root, relative);
     }
 
     /** 先頭の `/` を除き、指定したディレクトリからのパスにする。 */
