@@ -313,7 +313,9 @@ class MarkdocSchema extends Services.Schema {
     async load() {
         if (!this.source) return;
         try {
-            return await this.source.load();
+            const schema = await this.source.load();
+            this.warnFailures();
+            return schema;
         } catch (error) {
             this.report(error);
         } finally {
@@ -334,6 +336,15 @@ class MarkdocSchema extends Services.Schema {
         this.reloading = this.reload().finally(() => {
             this.reloading = null;
         });
+    }
+
+    /**
+     * スキーマの読み込み中に、読めずにスタブに替えたファイルやパッケージを、理由とともに警告する。
+     */
+    warnFailures() {
+        for (const {source, message} of this.source.loader?.failures ?? []) {
+            this.connection?.console.warn(`Markdoc: Replaced ${source} with a stub because it failed to load: ${message}`);
+        }
     }
 
     /**

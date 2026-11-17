@@ -168,7 +168,7 @@ test("ディレクトリがなければ schema.path を確かめるよう伝え�
 
 test("読み込んだファイルとスキーマのディレクトリの更新時刻が変わったら読み直す", async () => {
     const root = project(NEXT_PROJECT);
-    const connection = {console: {error: () => {}}, window: {showErrorMessage: () => {}}};
+    const connection = {console: {error: () => {}, warn: () => {}}, window: {showErrorMessage: () => {}}};
     const schema = new MarkdocSchema({root, schema: {path: "markdoc", type: "nextjs", watch: true}}, connection);
     await schema.reload();
     assert.strictEqual(schema.source.changed(), false);
@@ -235,4 +235,14 @@ test("スキーマの variables を config のファイルから探す", async (
     const result = await definition(root, "{% $product %}\n", 5);
     assert.strictEqual(result.uri, path.join(root, "markdoc/config.ts"));
     assert.deepStrictEqual(result.range.start, {line: 2, character: 14});
+});
+
+test("読めずにスタブに替えたファイルを、理由とともに警告する", async () => {
+    const root = project({"markdoc/tags.ts": "import missing from './missing';\nexport default {missing};\n"});
+    const warnings = [];
+    const connection = {console: {error: () => {}, warn: (message) => warnings.push(message)}};
+    const schema = new MarkdocSchema({root, schema: {path: "markdoc", type: "nextjs"}}, connection);
+    assert.ok(await schema.load());
+    assert.strictEqual(warnings.length, 1);
+    assert.match(warnings[0], /\.\/missing .*Cannot find \.\/missing/);
 });
