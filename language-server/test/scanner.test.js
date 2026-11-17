@@ -76,3 +76,21 @@ test("contentPaths に使える値がなければ path をスキャンする", a
     const {files} = await scanned({root, path: "pages", contentPaths: [1, "../outside"]});
     assert.deepStrictEqual(files, ["docs/getting-started.md"]);
 });
+
+test("名前の先頭が同じディレクトリのファイルを、別々に登録して参照する", async () => {
+    const root = project({"docs/extra/a.md": "", "docs-extra/a.md": ""});
+    const {scanner, files} = await scanned({root, path: "docs", contentPaths: ["docs", "docs-extra"]});
+    const outside = path.join(root, "docs-extra/a.md");
+    assert.deepStrictEqual(files, [outside, "extra/a.md"].sort());
+    assert.strictEqual(scanner.fullPath("extra/a.md"), path.join(root, "docs/extra/a.md"));
+    assert.strictEqual(scanner.fullPath(outside), outside);
+    assert.ok(scanner.has(outside));
+    assert.ok(scanner.has("extra/a.md"));
+});
+
+test("markdocExtensions の拡張子のファイルも、既定の拡張子に加えてスキャンする", async () => {
+    const root = project({"docs/a.md": "", "docs/b.markdown": "", "docs/c.txt": ""});
+    const {scanner, files} = await scanned({root, path: "docs", markdocExtensions: ["MARKDOWN", 1]});
+    assert.deepStrictEqual(files, ["a.md", "b.markdown"]);
+    assert.ok(scanner.extensions.includes(".mdoc"));
+});

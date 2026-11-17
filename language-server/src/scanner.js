@@ -14,8 +14,11 @@ const SKIPPED_DIRECTORIES = new Set(["node_modules", ".next", ".git"]);
  *     小文字（`d:\`）になり、前方一致で比較すると現在のファイルが見つからない
  *   - ファイルを OS ネイティブの相対パス（`partials\footer.mdoc`）で登録する一方、partial の照合には
  *     タグに書かれた `/` 区切りの値（`partials/footer.mdoc`）を使う
+ * - 登録キーは、基準パスの中のファイルなら基準パスからの `/` 区切りの相対パス、外なら絶対パスにする。上流は文字列の
+ *   前方一致で比べるため、基準パスが `docs` のとき `docs-extra` の中のファイルを `extra/…` として登録してしまう
  * - 設定の `contentPaths` があれば、`path` の代わりにその各ディレクトリ（プロジェクトルートからのパス）をスキャンする
  * - `node_modules`・`.next`・`.git` のディレクトリはスキャンしない
+ * - 設定の `markdocExtensions` の拡張子のファイルも読む
  */
 class FsPathScanner extends Services.Scanner {
     /**
@@ -28,6 +31,7 @@ class FsPathScanner extends Services.Scanner {
         this.path = lowerDriveLetter(this.path);
         /** スキャンするディレクトリの絶対パス。 */
         this.roots = scanRoots(config, this.path);
+        this.extensions = [...new Set([...this.extensions, ...markdocExtensions(config)])];
         // TODO: Markdoc を更新して comments.js を消すときに、この呼び出しも消す
         patchCommentRules(this.tokenizer);
     }
@@ -35,13 +39,27 @@ class FsPathScanner extends Services.Scanner {
     /**
      * 基準パスからの相対パスを、タグに書かれる値と同じ `/` 区切りで返す。
      *
-     * @param {string} file ファイルの絶対パス
-     * @returns {string} 基準パスからの相対パス。基準パスの外なら [file] のまま
+     * @param {string} file ファイルの絶対パスか、登録キーの相対パス
+     * @returns {string} 基準パスからの相対パス。相対パスか、基準パスの外なら [file] のまま
      */
     relativePath(file) {
-        const relative = super.relativePath(file);
+        // 登録キー（相対パス）はそのまま返す
+        if (!path.isAbsolute(file)) return file;
+        // 文字列の前方一致ではなく区切りの境界で比べる（`docs` と `docs-extra` を取り違えない）
+        const relative = path.relative(this.path, file);
+        if (!relative || !isInside(relative)) return file;
         // POSIX ではもともと `/` 区切りなので変換しない
         return path.sep === "/" ? relative : relative.split(path.sep).join("/");
+    }
+
+    /**
+     * 登録キー [file] のファイルの絶対パス。[relativePath] の逆にする。
+     *
+     * @param {string} file 基準パスからの相対パスか絶対パス
+     * @returns {string} 絶対パス
+     */
+    fullPath(file) {
+        return path.isAbsolute(file) ? file : path.join(this.path, file);
     }
 
     /**
@@ -146,6 +164,21 @@ async function* findFiles(dir, extensions) {
             yield file;
         }
     }
+}
+
+/**
+ * 設定の `markdocExtensions` の拡張子。Kotlin 側の MarkdocFileScope と同じく、小文字にし、先頭に `.` がなければ付ける。
+ *
+ * @param {object} config サーバーの設定エントリ
+ * @returns {string[]} 拡張子（`.md` など）
+ */
+function markdocExtensions(config) {
+    if (!Array.isArray(config.markdocExtensions)) return [];
+    return config.markdocExtensions
+        .filter((entry) => typeof entry === "string")
+        .map((entry) => entry.trim().toLowerCase())
+        .filter((entry) => entry && entry !== ".")
+        .map((entry) => entry.startsWith(".") ? entry : `.${entry}`);
 }
 
 /** vscode-uri の `fsPath` と同じく、Windows のドライブ文字を小文字にする。 */
