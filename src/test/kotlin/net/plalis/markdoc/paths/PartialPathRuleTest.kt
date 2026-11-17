@@ -30,6 +30,9 @@ class PartialPathRuleTest : BasePlatformTestCase() {
         assertEquals(partials, PartialPathRule.Directory("markdoc/partials").base(root, page, "footer.md")?.directory)
         assertEquals(partials, PartialPathRule.Directory("/markdoc/partials/").base(root, page, "/footer.md")?.directory)
         assertNull(PartialPathRule.Directory("missing").base(root, page, "footer.md"))
+        // プロジェクトルートの外のディレクトリは基準にしない
+        myFixture.tempDirFixture.findOrCreateDir("outside")
+        assertNull(PartialPathRule.Directory("../outside").base(root, page, "footer.md"))
 
         assertEquals(docs, PartialPathRule.Content("docs").base(root, page, "a.mdoc").directory)
         // コンテンツのディレクトリがなければプロジェクトルート

@@ -2,6 +2,7 @@ package net.plalis.markdoc.paths
 
 import com.google.gson.JsonObject
 import com.google.gson.JsonPrimitive
+import com.intellij.openapi.vfs.VfsUtilCore
 import com.intellij.openapi.vfs.VirtualFile
 import net.plalis.markdoc.paths.MarkdocPathResolver.Base
 
@@ -43,12 +44,15 @@ sealed interface PartialPathRule {
 
     /**
      * `{"directory": "…"}`：指定したディレクトリ（プロジェクトルートからのパス）から。先頭の `/` もそのディレクトリから。
+     * 言語サーバーと同じく、ディレクトリがプロジェクトルートの外なら基準にしない。
      *
      * @property path 設定の `partialPaths.directory`
      */
     data class Directory(val path: String) : PartialPathRule {
         override fun base(root: VirtualFile, file: VirtualFile, text: String): Base? =
-            MarkdocPathResolver.findUnder(root, path)?.takeIf { it.isDirectory }?.let { Base(it) }
+            MarkdocPathResolver.findUnder(root, path)
+                ?.takeIf { it.isDirectory && VfsUtilCore.isAncestor(root, it, false) }
+                ?.let { Base(it) }
     }
 
     companion object {
