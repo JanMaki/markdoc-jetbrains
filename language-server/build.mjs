@@ -1,7 +1,7 @@
 // @markdoc/language-server を単一の JS ファイルにまとめ、ライセンス表記とバージョンを添える。
 // 使い方: node build.mjs <出力ディレクトリ>
 import {build} from "esbuild";
-import {copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync} from "node:fs";
+import {copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync} from "node:fs";
 import {createRequire} from "node:module";
 import path from "node:path";
 import {fileURLToPath} from "node:url";
@@ -13,7 +13,7 @@ const pkg = JSON.parse(readFileSync(path.join(pkgDir, "package.json"), "utf8"));
 
 mkdirSync(outDir, {recursive: true});
 
-await build({
+const result = await build({
     // 上流の dist/wrapper.js の代わりに、Windows 向けの修正を入れたエントリーポイントから起動する
     entryPoints: [fileURLToPath(new URL("./src/server.js", import.meta.url))],
     outfile: path.join(outDir, "markdoc-lsp-server.js"),
@@ -24,6 +24,8 @@ await build({
     // 同梱した依存のライセンスコメントをファイル末尾に残す
     legalComments: "eof",
     logLevel: "info",
+    // 同梱したパッケージを調べるのに使う
+    metafile: true,
 });
 
 // npm パッケージには LICENSE が含まれないため、上流リポジトリの MIT 全文を代わりに添える
@@ -35,3 +37,38 @@ if (existsSync(license)) {
     writeFileSync(target, `@markdoc/language-server ${pkg.version}\n${readFileSync(new URL("./LICENSE-upstream.txt", import.meta.url), "utf8")}`);
 }
 writeFileSync(path.join(outDir, "VERSION"), `${pkg.version}\n`);
+
+// @markdoc/language-server 以外に同梱したパッケージ（sucrase など）のライセンスを 1 つのファイルにまとめる
+const thirdParty = bundledPackages(result.metafile)
+    .filter((dir) => dir !== pkgDir)
+    .map(licenseSection)
+    .join("\n");
+writeFileSync(path.join(outDir, "LICENSE-third-party.txt"), thirdParty);
+
+/**
+ * esbuild の [metafile] の入力に含まれる、node_modules のパッケージのディレクトリ（名前順）。
+ *
+ * @param {import("esbuild").Metafile} metafile esbuild の metafile
+ * @returns {string[]} パッケージのディレクトリの絶対パス
+ */
+function bundledPackages(metafile) {
+    const dirs = new Set();
+    for (const input of Object.keys(metafile.inputs)) {
+        const match = /^(.*?node_modules\/(?:@[^/]+\/)?[^/]+)\//.exec(input);
+        if (match) dirs.add(path.resolve(match[1]));
+    }
+    return [...dirs].sort();
+}
+
+/**
+ * パッケージのディレクトリ [dir] の名前、バージョン、ライセンスの種類と、LICENSE ファイルの全文。
+ *
+ * @param {string} dir パッケージのディレクトリの絶対パス
+ * @returns {string} ライセンスの節
+ */
+function licenseSection(dir) {
+    const manifest = JSON.parse(readFileSync(path.join(dir, "package.json"), "utf8"));
+    const file = readdirSync(dir).find((name) => /^licen[cs]e(\.|$)/i.test(name));
+    const text = file ? readFileSync(path.join(dir, file), "utf8").trimEnd() : `License: ${manifest.license}`;
+    return `== ${manifest.name} ${manifest.version} (${manifest.license}) ==\n\n${text}\n`;
+}

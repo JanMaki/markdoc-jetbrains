@@ -16,7 +16,7 @@ class MarkdocActionPromoter : ActionPromoter {
         val editor = context.getData(CommonDataKeys.EDITOR) ?: return emptyList()
         val project = context.getData(CommonDataKeys.PROJECT) ?: return emptyList()
         val file = context.getData(CommonDataKeys.VIRTUAL_FILE) ?: return emptyList()
-        if (!MarkdocFiles.isMarkdoc(file)) return emptyList()
+        if (!MarkdocFiles.isMarkdoc(project, file)) return emptyList()
         val text = editor.document.charsSequence
         val offset = editor.caretModel.offset
         val allowComments = MarkdocConfigReader.allowComments(project)

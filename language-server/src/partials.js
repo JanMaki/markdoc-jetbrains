@@ -3,38 +3,85 @@ const path = require("node:path");
 const {fileURLToPath} = require("node:url");
 
 /**
- * partial の `file` をファイルに解決する。設定の `partialPaths` で規則を選ぶ。
- * - `"content"`（既定）：コンテンツのディレクトリ（`path`）から。上流と同じ
- * - `"relative"`：Astro と同じ。`./`・`../` とそれ以外の名前は書いたファイルから、`/` はプロジェクトルートから、
- *   tsconfig の `paths` の別名はその行き先から
+ * partial の `file` をファイルに解決する規則。設定の `partialPaths` ごとにサブクラスを [PARTIAL_RULES] に登録する。
  *
- * 境界（`content` ではコンテンツのディレクトリ、`relative` ではプロジェクトルート）の外のファイルは返さない。
+ * 規則ごとの境界（[boundary]）の外のファイルは返さない。
  */
-class PartialResolver {
+class PartialRule {
+    /**
+     * @param {object} config サーバーの設定エントリ
+     * @param {object} Scanner 上流の Scanner（`path` にコンテンツのディレクトリの絶対パスを持つ）
+     */
     constructor(config, Scanner) {
         this.config = config;
         this.Scanner = Scanner;
-        this.aliases = new TsconfigAliases(config.root);
     }
 
-    get relative() {
-        return this.config.partialPaths === "relative";
-    }
-
-    /** [fromUri] の文書に書かれた [file] の絶対パス。解決できなければ `null`。 */
+    /**
+     * [fromUri] の文書に書かれた [file] の絶対パス。
+     *
+     * @param {unknown} file partial の `file` 属性の値
+     * @param {string} fromUri partial を書いた文書の URI
+     * @returns {string | null} 絶対パス。解決できないか、境界の外なら `null`
+     */
     resolve(file, fromUri) {
         if (typeof file !== "string" || !file || isUncLike(file)) return null;
-        const target = this.relative ? this.relativeTarget(file, fromUri) : this.contentTarget(file);
-        const boundary = this.relative ? this.config.root : this.Scanner.path;
-        return target && isFileInside(boundary, target) ? target : null;
+        const target = this.target(file, fromUri);
+        return target && isFileInside(this.boundary(), target) ? target : null;
     }
 
-    contentTarget(file) {
+    /**
+     * 境界の検査の前の、[file] の絶対パス。
+     *
+     * @param {string} file partial の `file` 属性の値（空でない）
+     * @param {string} fromUri partial を書いた文書の URI
+     * @returns {string | null} 絶対パス。解決できなければ `null`
+     */
+    target(file, fromUri) {
+        throw new Error("Not implemented");
+    }
+
+    /**
+     * 解決したファイルが内側になければならないディレクトリ。
+     *
+     * @returns {string} 絶対パス
+     */
+    boundary() {
+        throw new Error("Not implemented");
+    }
+}
+
+/** `"content"`（既定）：コンテンツのディレクトリ（`path`）から解決する。上流と同じ。境界はコンテンツのディレクトリ。 */
+class ContentPartialRule extends PartialRule {
+    /** 先頭の `/` を除き、コンテンツのディレクトリからのパスにする。 */
+    target(file) {
         const relative = file.replace(/^[\\/]/, "");
         return relative && !isAbsolute(relative) ? path.join(this.Scanner.path, relative) : null;
     }
 
-    relativeTarget(file, fromUri) {
+    /** コンテンツのディレクトリを返す。 */
+    boundary() {
+        return this.Scanner.path;
+    }
+}
+
+/**
+ * `"relative"`：Astro と同じ。`./`・`../` とそれ以外の名前は書いたファイルから、`/` はプロジェクトルートから、
+ * tsconfig の `paths` の別名はその行き先から解決する。境界はプロジェクトルート。
+ */
+class RelativePartialRule extends PartialRule {
+    /**
+     * @param {object} config サーバーの設定エントリ
+     * @param {object} Scanner 上流の Scanner
+     */
+    constructor(config, Scanner) {
+        super(config, Scanner);
+        /** プロジェクトルートの tsconfig.json の別名。 */
+        this.aliases = new TsconfigAliases(config.root);
+    }
+
+    /** 書き方（`./`・`../`、`/`、別名、そのほか）ごとの基準から解決する。 */
+    target(file, fromUri) {
         if (/^\.\.?([\\/]|$)/.test(file)) return fromDocument(file, fromUri);
         if (/^[\\/]/.test(file)) return path.join(this.config.root, file.slice(1));
         if (isAbsolute(file)) return null;
@@ -42,6 +89,59 @@ class PartialResolver {
         const alias = this.aliases.match(file).find(fileExists);
         return alias ?? fromDocument(file, fromUri);
     }
+
+    /** プロジェクトルートを返す。 */
+    boundary() {
+        return this.config.root;
+    }
+}
+
+/**
+ * `{"directory": "…"}`：指定したディレクトリ（プロジェクトルートからのパス）から解決する。`@markdoc/next.js` と同じく、
+ * 先頭の `/` もそのディレクトリからとし、`../` で外に出ることも許す。境界はプロジェクトルート。
+ */
+class DirectoryPartialRule extends PartialRule {
+    /**
+     * @param {object} config サーバーの設定エントリ（`partialPaths.directory` が文字列であること）
+     * @param {object} Scanner 上流の Scanner
+     */
+    constructor(config, Scanner) {
+        super(config, Scanner);
+        // Kotlin 側の findUnder と同じく、区切りを `/` にそろえて前後の `/` を除き、POSIX でもプロジェクトルートからのパスにする
+        const relative = config.partialPaths.directory.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
+        /** partial を探すディレクトリの絶対パス。 */
+        this.directory = path.resolve(config.root, relative);
+    }
+
+    /** 先頭の `/` を除き、指定したディレクトリからのパスにする。 */
+    target(file) {
+        const relative = file.replace(/^[\\/]/, "");
+        return relative && !isAbsolute(relative) ? path.join(this.directory, relative) : null;
+    }
+
+    /** プロジェクトルートを返す。 */
+    boundary() {
+        return this.config.root;
+    }
+}
+
+/** 文字列の `partialPaths` の値ごとの規則。 */
+const PARTIAL_RULES = {content: ContentPartialRule, relative: RelativePartialRule};
+
+/**
+ * 設定の `partialPaths` に合う規則を作る。文字列なら [PARTIAL_RULES] から選び、`directory` が文字列のオブジェクトなら
+ * [DirectoryPartialRule]、どちらでもなければ [ContentPartialRule] にする。
+ *
+ * @param {object} config サーバーの設定エントリ
+ * @param {object} Scanner 上流の Scanner
+ * @returns {PartialRule} 規則
+ */
+function createPartialRule(config, Scanner) {
+    const value = config.partialPaths;
+    let Rule = ContentPartialRule;
+    if (typeof value === "string" && Object.hasOwn(PARTIAL_RULES, value)) Rule = PARTIAL_RULES[value];
+    else if (value && typeof value === "object" && typeof value.directory === "string") Rule = DirectoryPartialRule;
+    return new Rule(config, Scanner);
 }
 
 /**
@@ -262,16 +362,34 @@ function isInside(root, target) {
     return inner === "" || (inner !== ".." && !inner.startsWith(`..${path.sep}`) && !path.isAbsolute(inner));
 }
 
-/** サービスごとに共有する PartialResolver（tsconfig の読み込みを使い回す）。 */
+/** サービスごとに共有する PartialRule（tsconfig の読み込みを使い回す）。 */
 const resolvers = new WeakMap();
 
+/**
+ * [services] で共有する、設定の `partialPaths` に合う規則。
+ *
+ * @param {object} config サーバーの設定エントリ
+ * @param {object} services 上流のサービス（`Scanner` を使う）
+ * @returns {PartialRule} 規則
+ */
 function partialResolver(config, services) {
     let resolver = resolvers.get(services);
     if (!resolver) {
-        resolver = new PartialResolver(config, services.Scanner);
+        resolver = createPartialRule(config, services.Scanner);
         resolvers.set(services, resolver);
     }
     return resolver;
 }
 
-module.exports = {PartialResolver, partialResolver, parseJsonc, isFileInside};
+module.exports = {
+    PartialRule,
+    ContentPartialRule,
+    RelativePartialRule,
+    DirectoryPartialRule,
+    PARTIAL_RULES,
+    TsconfigAliases,
+    createPartialRule,
+    partialResolver,
+    parseJsonc,
+    isFileInside,
+};

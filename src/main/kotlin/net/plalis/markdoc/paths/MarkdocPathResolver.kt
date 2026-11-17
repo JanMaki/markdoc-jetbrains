@@ -45,20 +45,18 @@ object MarkdocPathResolver {
     /** 別名の行き先のディレクトリ [directory] と、行き先の `*` より後 [suffix]（なければ空）。 */
     data class Target(val directory: VirtualFile, val suffix: String = "")
 
-    /** [file] に書かれた [value] の基準。 */
+    /**
+     * [file] に書かれた [value] の基準。partial の `file` は、設定の `partialPaths` で選んだ [PartialPathRule] で決める。
+     *
+     * @param project 対象のプロジェクト
+     * @param file パスを書いたファイル
+     * @param value 属性値のパス
+     * @return 基準。決まらなければ `null`
+     */
     fun base(project: Project, file: VirtualFile, value: MarkdocPathValue): Base? {
         val root = project.guessProjectDir() ?: return null
         if (!value.isPartial) return Base(if (value.text.startsWith("/")) root else file.parent ?: return null)
-        val config = MarkdocConfigReader.effectiveConfig(project)
-        if (config?.get("partialPaths")?.takeIf { it.isJsonPrimitive }?.asString != "relative") {
-            return Base(contentRoot(root, config?.get("path")?.takeIf { it.isJsonPrimitive }?.asString))
-        }
-        val text = value.text
-        return when {
-            text.startsWith("./") || text.startsWith("../") -> null
-            text.startsWith("/") -> Base(root)
-            else -> aliasBase(root, text)
-        } ?: file.parent?.let { Base(it) }
+        return PartialPathRule.from(MarkdocConfigReader.effectiveConfig(project)).base(root, file, value.text)
     }
 
     /**
@@ -91,10 +89,16 @@ object MarkdocPathResolver {
         return target.directory.findFileByRelativePath(mapped)
     }
 
-    /** 設定の `path` のディレクトリ。なければプロジェクトルート。 */
-    private fun contentRoot(root: VirtualFile, path: String?): VirtualFile {
+    /**
+     * [root] からの [path] のディレクトリ。
+     *
+     * @param root プロジェクトルート
+     * @param path プロジェクトルートからのパス（区切りは `/` か `\`）。空か `null` ならプロジェクトルート
+     * @return ディレクトリかファイル。なければ `null`
+     */
+    internal fun findUnder(root: VirtualFile, path: String?): VirtualFile? {
         val relative = path.orEmpty().replace('\\', '/').trim('/')
-        return relative.takeIf { it.isNotEmpty() }?.let(root::findFileByRelativePath) ?: root
+        return if (relative.isEmpty()) root else root.findFileByRelativePath(relative)
     }
 
     /**
@@ -103,7 +107,7 @@ object MarkdocPathResolver {
      * ただし、それ以外の `*` 付きの行き先のファイルが存在し、それより先の行き先にパス全体のファイルがなければそのファイル。
      * `*` なしなら存在する最初の行き先のファイル。
      */
-    private fun aliasBase(root: VirtualFile, text: String): Base? {
+    internal fun aliasBase(root: VirtualFile, text: String): Base? {
         for (alias in MarkdocTsconfigAliases.read(root)) {
             if (alias.wildcard && text.startsWith(alias.prefix)) {
                 val targets = ArrayList<Target>()

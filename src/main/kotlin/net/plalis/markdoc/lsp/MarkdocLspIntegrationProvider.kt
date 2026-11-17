@@ -28,7 +28,7 @@ class MarkdocLspIntegrationProvider : LspIntegrationProvider {
         file: VirtualFile,
         clientStarter: LspIntegrationProvider.LspClientStarter
     ) {
-        if (!MarkdocFiles.isMarkdoc(file)) return
+        if (!MarkdocFiles.isMarkdoc(project, file)) return
 
         // サーバーはスキーマ読み込み時にプロジェクトの JS を実行するため、信頼されていないプロジェクトでは起動しない
         if (!TrustedProjects.isProjectTrusted(project)) return

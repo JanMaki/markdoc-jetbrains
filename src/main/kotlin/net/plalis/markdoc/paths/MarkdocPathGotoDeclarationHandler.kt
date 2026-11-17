@@ -21,7 +21,7 @@ class MarkdocPathGotoDeclarationHandler : GotoDeclarationHandler {
     ): Array<PsiElement>? {
         val psiFile = sourceElement?.containingFile ?: return null
         val file = psiFile.virtualFile ?: return null
-        if (!MarkdocFiles.isMarkdoc(file)) return null
+        if (!MarkdocFiles.isMarkdoc(psiFile.project, file)) return null
 
         val allowComments = MarkdocConfigReader.allowComments(psiFile.project)
         val value = MarkdocPathValue.at(editor.document.charsSequence, offset, allowComments) ?: return null

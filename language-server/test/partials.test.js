@@ -4,7 +4,14 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const {pathToFileURL} = require("node:url");
-const {PartialResolver, parseJsonc, isFileInside} = require("../src/partials");
+const {
+    ContentPartialRule,
+    RelativePartialRule,
+    DirectoryPartialRule,
+    createPartialRule,
+    parseJsonc,
+    isFileInside,
+} = require("../src/partials");
 
 /** 一時ディレクトリに [files]（パス → 中身）を作り、そのディレクトリの実パスを返す。 */
 function project(files) {
@@ -17,10 +24,51 @@ function project(files) {
     return root;
 }
 
-/** [root] のプロジェクトで、コンテンツのディレクトリを [content] にした PartialResolver。 */
+/** [root] のプロジェクトで、コンテンツのディレクトリを [content] にした、設定の `partialPaths` に合う規則。 */
 function resolver(root, content, options = {}) {
-    return new PartialResolver({root, path: content, ...options}, {path: path.join(root, content)});
+    return createPartialRule({root, path: content, ...options}, {path: path.join(root, content)});
 }
+
+test("partialPaths の値で規則を選び、ない値はコンテンツのディレクトリから解決する", () => {
+    const rule = (partialPaths) => createPartialRule({root: "/r", path: "", partialPaths}, {path: "/r"});
+    assert.ok(rule("relative") instanceof RelativePartialRule);
+    assert.ok(rule("content") instanceof ContentPartialRule);
+    assert.ok(rule({directory: "markdoc/partials"}) instanceof DirectoryPartialRule);
+    assert.ok(rule(undefined) instanceof ContentPartialRule);
+    assert.ok(rule("unknown") instanceof ContentPartialRule);
+    assert.ok(rule("constructor") instanceof ContentPartialRule);
+    assert.ok(rule("directory") instanceof ContentPartialRule);
+    assert.ok(rule({directory: 1}) instanceof ContentPartialRule);
+});
+
+test("directory：指定したディレクトリから解決し、境界はプロジェクトルート", () => {
+    const root = project({
+        "markdoc/partials/footer.md": "",
+        "markdoc/partials/nested/header.mdoc": "",
+        "markdoc/shared.md": "",
+        "pages/index.md": "",
+    });
+    const r = resolver(root, "", {partialPaths: {directory: "markdoc/partials"}});
+    const from = uri(root, "pages/index.md");
+    const footer = path.join(root, "markdoc/partials/footer.md");
+    assert.strictEqual(r.resolve("footer.md", from), footer);
+    // @markdoc/next.js と同じく、先頭の / もディレクトリから
+    assert.strictEqual(r.resolve("/footer.md", from), footer);
+    assert.strictEqual(r.resolve("nested/header.mdoc", from), path.join(root, "markdoc/partials/nested/header.mdoc"));
+    // 書いたファイルからではない
+    assert.strictEqual(r.resolve("./footer.md", uri(root, "markdoc/partials/nested/header.mdoc")), footer);
+    // ../ でディレクトリの外に出てもよいが、プロジェクトルートの外は読まない
+    assert.strictEqual(r.resolve("../shared.md", from), path.join(root, "markdoc/shared.md"));
+    assert.strictEqual(r.resolve("../../../outside.md", from), null);
+    assert.strictEqual(r.resolve("missing.md", from), null);
+});
+
+test("directory：先頭の / はプロジェクトルートからのパスとして読む", () => {
+    const root = path.resolve("/work/site");
+    const r = createPartialRule({root, path: "", partialPaths: {directory: "/markdoc/partials"}}, {path: root});
+    assert.strictEqual(r.directory, path.join(root, "markdoc/partials"));
+    assert.strictEqual(r.boundary(), root);
+});
 
 const uri = (root, file) => pathToFileURL(path.join(root, file)).href;
 

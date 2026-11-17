@@ -20,6 +20,7 @@ import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.vfs.VirtualFile
 import net.plalis.markdoc.MarkdocConfigReader
 import net.plalis.markdoc.MarkdocFiles
+import net.plalis.markdoc.config.framework.MarkdocFramework
 import net.plalis.markdoc.settings.MarkdocConfigurable
 import net.plalis.markdoc.settings.MarkdocSettings
 
@@ -67,7 +68,7 @@ class MarkdocConfigNotifier(private val project: Project) : Disposable {
     private fun onOpened(file: VirtualFile) {
         if (notified || !file.isValid) return
         when {
-            MarkdocFiles.isMarkdoc(file) -> notifyMissing(MARKDOC_FILE_MESSAGE)
+            MarkdocFiles.isMarkdoc(project, file) -> notifyMissing(MARKDOC_FILE_MESSAGE)
             isMarkdown(file) -> {
                 val document = FileDocumentManager.getInstance().getDocument(file) ?: return
                 if (TAG.containsMatchIn(document.immutableCharSequence)) notifyMissing(MARKDOWN_FILE_MESSAGE)
@@ -118,8 +119,13 @@ class MarkdocConfigNotifier(private val project: Project) : Disposable {
             .notify(project)
     }
 
+    /** [message] に、プロジェクトが使う [MarkdocFramework] の [MarkdocFramework.notice] を添えた本文。 */
     private fun messageFor(message: String): String =
-        if (MarkdocAstroProject.isAstro(project)) "$message $ASTRO_MESSAGE" else message
+        MarkdocFramework.of(project)?.let { "$message ${it.notice}" } ?: message
+
+    /** [file] が Markdoc ファイルではない `.md` ファイルかどうか（`*.markdoc.md` などは Markdoc ファイル）。 */
+    private fun isMarkdown(file: VirtualFile): Boolean =
+        !file.isDirectory && file.extension.equals("md", ignoreCase = true) && !MarkdocFiles.isMarkdoc(project, file)
 
     /** 監視は [listeners] に登録してあり、このサービスの破棄で一緒に破棄されるので、ここでは何もしない。 */
     override fun dispose() = Unit
@@ -142,14 +148,7 @@ class MarkdocConfigNotifier(private val project: Project) : Disposable {
         private const val MARKDOWN_FILE_MESSAGE =
             "This file contains Markdoc tags. Creating a config file and using the .mdoc extension is recommended."
 
-        private const val ASTRO_MESSAGE =
-            "This looks like an Astro project, so the config will be set up for @astrojs/markdoc."
-
         /** [project] の通知を出すサービスを返す。 */
         fun getInstance(project: Project): MarkdocConfigNotifier = project.service()
-
-        /** [file] が Markdoc ファイルではない `.md` ファイルかどうか（`*.markdoc.md` は Markdoc ファイル）。 */
-        private fun isMarkdown(file: VirtualFile): Boolean =
-            !file.isDirectory && file.extension.equals("md", ignoreCase = true) && !MarkdocFiles.isMarkdoc(file)
     }
 }

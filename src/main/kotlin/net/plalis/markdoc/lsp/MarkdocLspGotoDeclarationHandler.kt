@@ -27,8 +27,8 @@ class MarkdocLspGotoDeclarationHandler : GotoDeclarationHandler {
     override fun getGotoDeclarationTargets(sourceElement: PsiElement?, offset: Int, editor: Editor): Array<PsiElement>? {
         val psiFile = sourceElement?.containingFile ?: return null
         val file = psiFile.virtualFile ?: return null
-        if (!MarkdocFiles.isMarkdoc(file)) return null
         val project = psiFile.project
+        if (!MarkdocFiles.isMarkdoc(project, file)) return null
         val document = editor.document
         val text = document.charsSequence
         val allowComments = MarkdocConfigReader.allowComments(project)

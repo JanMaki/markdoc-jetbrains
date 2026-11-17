@@ -23,7 +23,8 @@ class MarkdocPathCompletionContributor : CompletionContributor() {
     override fun fillCompletionVariants(parameters: CompletionParameters, result: CompletionResultSet) {
         val psiFile = parameters.originalFile
         val file = psiFile.virtualFile ?: return
-        if (!MarkdocFiles.isMarkdoc(file)) return
+        val project = psiFile.project
+        if (!MarkdocFiles.isMarkdoc(project, file)) return
 
         val offset = parameters.offset
         val text = parameters.editor.document.charsSequence
@@ -51,7 +52,7 @@ class MarkdocPathCompletionContributor : CompletionContributor() {
         for ((directory, target) in directories) for (child in directory.children) {
             if (child.name.startsWith(".")) continue
             if (child == file) continue
-            if (value.isPartial && !child.isDirectory && !MarkdocFiles.isMarkdoc(child)) continue
+            if (value.isPartial && !child.isDirectory && !MarkdocFiles.isMarkdoc(project, child)) continue
             // ファイル名は、別名の `*` の読み替え（`*.mdoc` の `.mdoc`）を戻した名前で出す
             val name = if (child.isDirectory) child.name else base.pathName(target, child.name) ?: continue
             if (name.isEmpty()) continue

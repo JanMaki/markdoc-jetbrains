@@ -1,4 +1,5 @@
 import org.jetbrains.intellij.platform.gradle.IntelliJPlatformType
+import org.jetbrains.intellij.platform.gradle.TestFrameworkType
 import org.jetbrains.intellij.platform.gradle.tasks.PrepareSandboxTask
 import org.jetbrains.intellij.platform.gradle.tasks.VerifyPluginTask
 
@@ -22,7 +23,12 @@ dependencies {
         webstorm(providers.gradleProperty("platformVersion"))
         // LSP はプラットフォームのモジュールなので bundledPlugins には書かない
         bundledPlugins("JavaScript", "NodeJS", "org.intellij.plugins.markdown", "com.intellij.modules.json")
+        // src/test の BasePlatformTestCase などを使うためのテストフレームワーク
+        testFramework(TestFrameworkType.Platform)
     }
+    testImplementation("junit:junit:4.13.2")
+    // プラットフォームのテストフレームワークが実行時に参照する
+    testImplementation("org.opentest4j:opentest4j:1.3.0")
 }
 
 intellijPlatform {
