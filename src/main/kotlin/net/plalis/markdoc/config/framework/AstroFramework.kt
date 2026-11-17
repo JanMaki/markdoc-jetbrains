@@ -4,6 +4,8 @@ import com.google.gson.JsonObject
 import com.intellij.openapi.vfs.VfsUtilCore
 import com.intellij.openapi.vfs.VirtualFile
 import net.plalis.markdoc.config.javascript.JavaScriptSource
+import net.plalis.markdoc.config.javascript.JsBoolean
+import net.plalis.markdoc.config.javascript.JsObject
 
 /**
  * Astro（`@astrojs/markdoc`）のプロジェクト。
@@ -27,8 +29,8 @@ object AstroFramework : MarkdocFramework() {
     /** Markdoc のインテグレーションのパッケージ名。 */
     private const val INTEGRATION_PACKAGE = "@astrojs/markdoc"
 
-    /** 値が `true` の `ignoreIndentation`・`allowHTML`（キーの引用符は [JavaScriptSource] で外してある）。 */
-    private val INDENTATION_OPTION = Regex("""(?<![\w$.])(ignoreIndentation|allowHTML)\s*:\s*true(?![\w$])""")
+    /** `true` なら `allowIndentation` を有効にする、インテグレーションの設定のキー。 */
+    private val INDENTATION_OPTIONS = listOf("ignoreIndentation", "allowHTML")
 
     /** Astro の設定ファイルがあるか、依存に `@astrojs/markdoc` があれば真を返す。 */
     override fun detect(root: VirtualFile): Boolean =
@@ -77,8 +79,8 @@ object AstroFramework : MarkdocFramework() {
     }
 
     /**
-     * JavaScript の [text] で、インテグレーションの呼び出しの引数に `ignoreIndentation` か `allowHTML` を
-     * `true` にしたプロパティ（キーは引用符の有無を問わない）があるか。コメントと文字列の中身は見ない。
+     * JavaScript の [text] で、インテグレーションの呼び出しの最初の引数のオブジェクトに、値が `true` のリテラルの
+     * `ignoreIndentation` か `allowHTML` があるか。`false` と、リテラルとして読めない値は有効にしない。
      *
      * @param text Astro の設定ファイルのテキスト
      * @return あれば真
@@ -86,6 +88,8 @@ object AstroFramework : MarkdocFramework() {
     internal fun allowsIndentation(text: String): Boolean {
         val source = JavaScriptSource(text)
         val name = source.defaultImportName(INTEGRATION_PACKAGE) ?: "markdoc"
-        return source.callArgumentCode(name).any { INDENTATION_OPTION.containsMatchIn(it) }
+        return source.firstArguments(name).any { options ->
+            options is JsObject && INDENTATION_OPTIONS.any { options[it] == JsBoolean(true) }
+        }
     }
 }

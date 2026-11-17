@@ -27,8 +27,11 @@ class AstroFrameworkTest : BasePlatformTestCase() {
         assertFalse(AstroFramework.allowsIndentation("markdoc({ a: 'allowHTML: true' })"))
         // ほかの関数とプロパティの呼び出しは対象外
         assertFalse(AstroFramework.allowsIndentation("other({ allowHTML: true }); x.markdoc({ allowHTML: true })"))
-        // 入れ子のオブジェクトの中でも見つける
-        assertTrue(AstroFramework.allowsIndentation("markdoc({ nested: { allowHTML: true } })"))
+        // 最初の引数のプロパティの値だけを読む
+        assertFalse(AstroFramework.allowsIndentation("markdoc({ nested: { allowHTML: true } })"))
+        assertFalse(AstroFramework.allowsIndentation("markdoc({ allowHTML: isDev })"))
+        assertFalse(AstroFramework.allowsIndentation("markdoc({ allowHTML: true && isDev })"))
+        assertTrue(AstroFramework.allowsIndentation("markdoc({ allowHTML: false, ignoreIndentation: true })"))
     }
 
     /** Astro の設定ファイルか依存のどちらかで Astro のプロジェクトとみなす。 */
