@@ -17,6 +17,12 @@ class JavaScriptSourceTest {
         // コメントの中の import は読まない
         assertNull(JavaScriptSource("// import md from '@astrojs/markdoc';").defaultImportName("@astrojs/markdoc"))
         assertNull(JavaScriptSource("import md from 'other';").defaultImportName("@astrojs/markdoc"))
+        // 文字列の中の import は読まず、その後の import を読む
+        assertEquals(
+            "md",
+            JavaScriptSource("const s = \"import x from '@astrojs/markdoc'\";\nimport md from '@astrojs/markdoc';")
+                .defaultImportName("@astrojs/markdoc"),
+        )
     }
 
     /** 呼び出しの括弧の中を、文字列の中身とコメントを空白にした形で返す。 */
@@ -31,6 +37,16 @@ class JavaScriptSourceTest {
         val arguments = source.callArgumentCode("f")
         assertEquals(1, arguments.size)
         assertEquals("{  a : 1, b: \" \"            }, g(2)", arguments.single())
+    }
+
+    /** 正規表現リテラルの中の括弧とコメントの始まりの形を、呼び出しの括弧やコメントとして読まない。 */
+    @Test
+    fun regexLiteral() {
+        val source = JavaScriptSource("""f({ a: /\/*[)/]/g, b: x / 2 / 3, c: true }); g(1);""")
+        assertEquals(1, source.callArgumentCode("g").size)
+        val options = source.firstArguments("f").single() as JsObject
+        assertEquals(JsRegex("""\/*[)/]""", "g"), options["a"])
+        assertEquals(JsBoolean(true), options["c"])
     }
 
     /** 最初の引数のリテラルを読む。 */

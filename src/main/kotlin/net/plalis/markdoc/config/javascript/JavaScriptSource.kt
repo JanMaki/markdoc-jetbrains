@@ -3,17 +3,17 @@ package net.plalis.markdoc.config.javascript
 /**
  * JavaScript の設定ファイル（`astro.config.mjs` など）のテキストを、実行せずに読む。
  *
- * コメントと文字列の中身を空白に置き換えた（位置は元のテキストと同じ）テキストで関数の呼び出しを探し、
+ * コメントと文字列・正規表現リテラルの中身を空白に置き換えた（位置は元のテキストと同じ）テキストで関数の呼び出しを探し、
  * import の名前、呼び出しの引数のテキスト、引数の値を取り出す。
  *
  * @param text 設定ファイルのテキスト
  */
 class JavaScriptSource(text: String) {
-    /** コメントを空白に置き換えたテキスト。文字列はそのまま残す。 */
+    /** コメントを空白に置き換えたテキスト。文字列と正規表現リテラルはそのまま残す。 */
     private val withStrings: String
 
     /**
-     * コメントと文字列の中身を空白に置き換えたテキスト。
+     * コメントと、文字列・正規表現リテラルの中身を空白に置き換えたテキスト。
      * プロパティのキーの文字列（直後に `:` が続く）は、引用符だけを空白にして中身を残す。
      */
     private val code: String
@@ -34,7 +34,10 @@ class JavaScriptSource(text: String) {
         val pattern = Regex(
             """\bimport\s+([A-Za-z_$][\w$]*)\s*(?:,\s*\{[^}]*\}\s*)?from\s*["']${Regex.escape(module)}["']""",
         )
-        return pattern.find(withStrings)?.groupValues?.get(1)
+        // 文字列の中に書かれた候補は、code では `import` が空白になっているので除く
+        return pattern.findAll(withStrings)
+            .firstOrNull { code.startsWith("import", it.range.first) }
+            ?.groupValues?.get(1)
     }
 
     /**
@@ -124,10 +127,62 @@ class JavaScriptSource(text: String) {
                         i = end
                     }
 
+                    c == '/' && regexAllowed(withStrings, i) -> {
+                        val end = regexEnd(text, i)
+                        if (end < 0) {
+                            i++
+                        } else {
+                            // 括弧の深さに影響しないよう、`/` は残して中身を空白にする
+                            blank(code, i + 1, end - 1)
+                            i = end
+                        }
+                    }
+
                     else -> i++
                 }
             }
             return withStrings.toString() to code.toString()
+        }
+
+        /** 直後の `/` を除算ではなく正規表現の始まりとみなすキーワード。 */
+        val REGEX_KEYWORDS = setOf(
+            "return", "typeof", "instanceof", "in", "of", "new", "delete", "void", "throw", "case", "do", "else",
+            "yield", "await",
+        )
+
+        /** [text] の [i] の `/` が除算ではなく正規表現の始まりか（直前の字句で判断する）。 */
+        fun regexAllowed(text: CharSequence, i: Int): Boolean {
+            var j = i - 1
+            while (j >= 0 && text[j].isWhitespace()) j--
+            if (j < 0) return true
+            // 括弧、文字列リテラル、テンプレート文字列の終わりの後は除算
+            if (text[j] in ")]}\"'`") return false
+            if (!isWordChar(text[j])) return true
+            var start = j
+            while (start > 0 && isWordChar(text[start - 1])) start--
+            return text.substring(start, j + 1) in REGEX_KEYWORDS
+        }
+
+        /** 名前に使える文字か。 */
+        fun isWordChar(c: Char): Boolean = c.isLetterOrDigit() || c == '_' || c == '$'
+
+        /**
+         * [open] の `/` から始まる正規表現リテラルの、閉じる `/` の次の位置。エスケープと文字クラスの中の `/` では閉じない。
+         * 行の中で閉じていなければ -1。
+         */
+        fun regexEnd(text: String, open: Int): Int {
+            var i = open + 1
+            var inClass = false
+            while (i < text.length && text[i] != '\n') {
+                when (text[i]) {
+                    '\\' -> i++
+                    '[' -> inClass = true
+                    ']' -> inClass = false
+                    '/' -> if (!inClass) return i + 1
+                }
+                i++
+            }
+            return -1
         }
 
         /** [builder] の [start] から [end] の手前までを、改行を残して空白にする。 */
